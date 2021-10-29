@@ -5410,6 +5410,13 @@ void MLIRASTConsumer::run() {
 
     if (done.count(name))
       continue;
+
+    if (StringRef(name).startswith("_Z28__"))
+      continue;
+
+    if (StringRef(name).startswith("_ZN7__"))
+      continue;
+
     done.insert(name);
     MLIRScanner ms(*this, GetOrCreateMLIRFunction(FD), FD, module, LTInfo);
   }
@@ -5547,6 +5554,8 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
     if (StringRef(name).startswith("_ZNSt"))
       continue;
     if (StringRef(name).startswith("_ZN9__gnu"))
+      continue;
+    if (StringRef(name).startswith("_Z28"))
       continue;
 
     if ((emitIfFound.count("*") && name != "fpclassify" && !fd->isStatic() &&
