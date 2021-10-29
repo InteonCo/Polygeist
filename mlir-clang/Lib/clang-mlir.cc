@@ -235,8 +235,8 @@ MLIRScanner::MLIRScanner(MLIRASTConsumer &Glob, mlir::FuncOp function,
 
           VisitConstructCommon(cast<clang::CXXConstructExpr>(expr->getInit()),
                                /*name*/ nullptr, /*space*/ 0, /*mem*/ V);
-          continue;
         }
+        continue;
       }
       assert(field && "initialiation expression must apply to a field");
       if (auto AILE = dyn_cast<ArrayInitLoopExpr>(expr->getInit())) {
