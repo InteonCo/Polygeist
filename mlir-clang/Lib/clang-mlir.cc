@@ -483,9 +483,9 @@ static void initializeValueByInitListExpr(mlir::Value toInit, clang::Expr *expr,
   // memref.store operations. This requires that the memref value should
   // have static shape.
   MemRefType memTy = toInit.getType().cast<MemRefType>();
-  assert(memTy.hasStaticShape() &&
-         "The memref to be initialized by InitListExpr should have static "
-         "shape.");
+  // assert(memTy.hasStaticShape() &&
+  //        "The memref to be initialized by InitListExpr should have static "
+  //        "shape.");
 
   auto shape = memTy.getShape();
   // `offsets` is being mutable during the recursive function call to helper.
@@ -537,8 +537,10 @@ static void initializeValueByInitListExpr(mlir::Value toInit, clang::Expr *expr,
         // way down until we reach to the last dimension. Otherwise, there
         // should be a corresponding InitListExpr for the current dim, and
         // we pass that down.
+        if (i >= shape.size())
+          return;
         helper(initListExpr->hasArrayFiller() ? expr
-                                              : initListExpr->getInit(i));
+                                                : initListExpr->getInit(i));
       }
       offsets.pop_back();
     }
@@ -592,6 +594,10 @@ ValueCategory MLIRScanner::VisitVarDecl(clang::VarDecl *decl) {
         }
         subType = inite.val.getType();
       }
+    }
+    else {
+      LLVMABI = false;
+      memtype = 5;
     }
   } else if (auto ava = decl->getAttr<AlignValueAttr>()) {
     if (auto algn = dyn_cast<clang::ConstantExpr>(ava->getAlignment())) {
@@ -662,7 +668,7 @@ ValueCategory MLIRScanner::VisitInitListExpr(clang::InitListExpr *expr) {
 
   if (Glob.getMLIRType(
               Glob.CGM.getContext().getLValueReferenceType(expr->getType()))
-          .isa<mlir::LLVM::LLVMPointerType>())
+          .isa<mlir::LLVM::LLVMPointerType>() && !isa<InitListExpr>(expr))
     LLVMABI = true;
   else {
     Glob.getMLIRType(expr->getType(), &isArray);
@@ -689,15 +695,15 @@ ValueCategory MLIRScanner::VisitInitListExpr(clang::InitListExpr *expr) {
     return ValueCategory(op, true);
   }
   if (expr->getNumInits()) {
-    assert(op.getType().cast<MemRefType>().getShape().size() <= 2);
-    assert((op.getType().cast<MemRefType>().getShape().size() == 1 &&
-            op.getType().cast<MemRefType>().getShape()[0] == -1) ||
-           op.getType().cast<MemRefType>().getShape().back() ==
-               expr->getNumInits());
+    // assert(op.getType().cast<MemRefType>().getShape().size() <= 2);
+    // assert((op.getType().cast<MemRefType>().getShape().size() == 1 &&
+    //         op.getType().cast<MemRefType>().getShape()[0] == -1) ||
+    //        op.getType().cast<MemRefType>().getShape().back() ==
+    //            expr->getNumInits());
     for (size_t i = 0; i < expr->getNumInits(); ++i) {
       auto inite = Visit(expr->getInit(i)).getValue(builder);
-      assert(inite.getType() ==
-             op.getType().cast<MemRefType>().getElementType());
+      // assert(inite.getType() ==
+      //        op.getType().cast<MemRefType>().getElementType());
       SmallVector<mlir::Value> idxs;
       if (op.getType().cast<MemRefType>().getShape().size() == 2)
         idxs.push_back(getConstantIndex(0));
@@ -6153,8 +6159,8 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
 
     const ArgStringList *args = &cmd->getArguments();
 
-    Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(), *args,
-                                                 Diags);
+     Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(), *args,
+                                                  Diags);
     Clang->getInvocation().getFrontendOpts().DisableFree = false;
 
     void *GetExecutablePathVP = (void *)(intptr_t)GetExecutablePath;
