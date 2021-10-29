@@ -341,8 +341,8 @@ ValueCategory MLIRScanner::VisitReturnStmt(clang::ReturnStmt *stmt) {
       assert(rv.val && "expect right value to be valid");
 
       mlir::Value val;
-      if (stmt->getRetValue()->isLValue() || stmt->getRetValue()->isXValue()) {
-        assert(rv.isReference);
+      if (rv.isReference && (stmt->getRetValue()->isLValue() || stmt->getRetValue()->isXValue())) {
+        // assert(rv.isReference);
         val = rv.val;
       } else {
         val = rv.getValue(builder);

@@ -5526,6 +5526,12 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
       continue;
     }
 
+    if (fd->getIdentifier())
+       llvm::errs() << "Func name: " << fd->getName() << "\n";
+     llvm::errs() << "Func Body && Loc " << "\n";
+     fd->getBody()->dump();
+     fd->getLocation().dump(SM);
+
     bool externLinkage = true;
     /*
     auto LV = CGM.getFunctionLinkage(fd);
