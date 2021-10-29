@@ -411,7 +411,7 @@ int main(int argc, char **argv) {
   bool LinkOMP = false;
   pm.enableVerifier(EarlyVerifier);
   mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
-  if (true) {
+  if (false) {
     optPM.addPass(mlir::createCSEPass());
     optPM.addPass(mlir::createCanonicalizerPass());
     optPM.addPass(polygeist::createMem2RegPass());
@@ -441,14 +441,14 @@ int main(int argc, char **argv) {
       if (ScalarReplacement)
         optPM.addPass(mlir::createAffineScalarReplacementPass());
     }
-    if (mlir::failed(pm.run(module.get()))) {
-      module->dump();
-      return 4;
-    }
-    if (mlir::failed(mlir::verify(module.get()))) {
-      module->dump();
-      return 5;
-    }
+    // if (mlir::failed(pm.run(module.get()))) {
+    //   module->dump();
+    //   return 4;
+    // }
+    // if (mlir::failed(mlir::verify(module.get()))) {
+    //   module->dump();
+    //   return 5;
+    // }
 
 #define optPM optPM2
 #define pm pm2
