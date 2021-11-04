@@ -120,6 +120,9 @@ static cl::opt<std::string> ResourceDir("resource-dir", cl::init(""),
 static cl::opt<bool> EarlyVerifier("early-verifier", cl::init(false),
                                    cl::desc("Enable verifier ASAP"));
 
+static cl::opt<bool> SyclKernelsOnly("sycl-kernels-only", cl::init(false),
+                                   cl::desc("Process sycl kernels only"));
+
 static cl::opt<bool> Verbose("v", cl::init(false), cl::desc("Verbose"));
 
 static cl::opt<bool>
@@ -398,7 +401,14 @@ int main(int argc, char **argv) {
 
   llvm::Triple triple;
   llvm::DataLayout DL("");
-  parseMLIR(argv[0], inputFileName, cfunction, includeDirs, defines, module,
+
+  std::string fn;
+
+  if (!SyclKernelsOnly) {
+    fn = cfunction.getValue();
+  }
+  
+  parseMLIR(argv[0], inputFileName, fn, includeDirs, defines, module,
             triple, DL);
   mlir::PassManager pm(&context);
 

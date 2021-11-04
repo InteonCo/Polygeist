@@ -5566,7 +5566,8 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
 
     if ((emitIfFound.count("*") && name != "fpclassify" && !fd->isStatic() &&
          externLinkage) ||
-        emitIfFound.count(name)) {
+        emitIfFound.count(name) ||
+        fd->hasAttr<SYCLHalideAttr>()) {
       functionsToEmit.push_back(fd);
     } else {
     }
@@ -6180,7 +6181,7 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
     const ArgStringList *args = &cmd->getArguments();
 
     llvm::SmallVector<const char*, 16> args2 = {"-cc1", "-triple", "spir64-unknown-unknown", "-aux-triple", "x86_64-unknown-linux-gnu", "-fsycl-is-device", "-fdeclare-spirv-builtins", "-mllvm", "-sycl-opt", "-Wno-sycl-strict", "-fsycl-int-header=/tmp/no-loop-header-c4ae95.h", "-fsycl-int-footer=/tmp/no-loop-footer-572676.h", "-sycl-std=2020", "-fsycl-unique-prefix=02926462a8d9f0f8", "-Wspir-compat", "-emit-llvm", "-emit-llvm-uselists", "-disable-free", "-main-file-name", "-mrelocation-model", "static", "-mframe-pointer=all", "-fmath-errno", "-fno-rounding-math", "-fno-verbose-asm", "-mconstructor-aliases", "-aux-target-cpu", "x86-64", "-debugger-tuning=gdb", "-fcoverage-compilation-dir=/home/mahmoud/codeplay/Polygeist/llvm-project/build/test", "-resource-dir", "/home/mahmoud/codeplay/Polygeist/llvm-project/build/lib/clang/14.0.0", "-internal-isystem", "/home/mahmoud/codeplay/Polygeist/llvm-project/build/test/../bin/../include/sycl", "-internal-isystem", "/home/mahmoud/codeplay/Polygeist/llvm-project/build/test/../bin/../include", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/x86_64-linux-gnu/c++/9", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/backward", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/x86_64-linux-gnu/c++/9", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/backward", "-internal-isystem", "/home/mahmoud/codeplay/Polygeist/llvm-project/build/lib/clang/14.0.0/include", "-internal-isystem", "/usr/local/include", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../x86_64-linux-gnu/include", "-internal-externc-isystem", "/usr/include/x86_64-linux-gnu", "-internal-externc-isystem", "/include", "-internal-externc-isystem", "/usr/include", "-internal-isystem", "/home/mahmoud/codeplay/Polygeist/llvm-project/build/lib/clang/14.0.0/include", "-internal-isystem", "/usr/local/include", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../x86_64-linux-gnu/include", "-internal-externc-isystem", "/usr/include/x86_64-linux-gnu", "-internal-externc-isystem", "/include", "-internal-externc-isystem", "/usr/include", "-std=c++17", "-fdeprecated-macro", "-fdebug-compilation-dir=/home/mahmoud/codeplay/Polygeist/llvm-project/build/test", "-ferror-limit", "19", "-fgnuc-version=4.2.1", "-fcxx-exceptions", "-fexceptions", "-fcolor-diagnostics", "-faddrsig", "-D__GCC_HAVE_DWARF2_CFI_ASM=1", "-o", "/tmp/no-loop-c59c82.bc", "-x", "c++",
-    "-D__x86_64__", "-DDISABLE_SYCL_INSTRUMENTATION_METADATA"};
+    "-D__x86_64__", "-DDISABLE_SYCL_INSTRUMENTATION_METADATA", "-fintel-halide"};
 
     Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(), args2,
                                                   Diags);
