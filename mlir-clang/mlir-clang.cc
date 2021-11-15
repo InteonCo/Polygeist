@@ -120,8 +120,11 @@ static cl::opt<std::string> ResourceDir("resource-dir", cl::init(""),
 static cl::opt<bool> EarlyVerifier("early-verifier", cl::init(false),
                                    cl::desc("Enable verifier ASAP"));
 
+static cl::opt<bool> SyclInput("sycl", cl::init(false),
+                               cl::desc("Input file is sycl"));
+
 static cl::opt<bool> SyclKernelsOnly("sycl-kernels-only", cl::init(false),
-                                   cl::desc("Process sycl kernels only"));
+                                     cl::desc("Process sycl kernels only"));
 
 static cl::opt<bool> Verbose("v", cl::init(false), cl::desc("Verbose"));
 
@@ -409,7 +412,7 @@ int main(int argc, char **argv) {
   }
   
   parseMLIR(argv[0], inputFileName, fn, includeDirs, defines, module,
-            triple, DL);
+            triple, DL, SyclInput || SyclKernelsOnly);
   mlir::PassManager pm(&context);
 
   if (ImmediateMLIR) {
