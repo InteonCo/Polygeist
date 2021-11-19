@@ -97,10 +97,6 @@ static cl::opt<std::string> CUDAPath("cuda-path", cl::init(""),
 
 static cl::opt<std::string> Output("o", cl::init("-"), cl::desc("Output file"));
 
-static cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
-                                           cl::desc("<Specify input file>"),
-                                           cl::cat(toolOptions));
-
 static cl::opt<std::string> cfunction("function",
                                       cl::desc("<Specify function>"),
                                       cl::init("main"), cl::cat(toolOptions));
@@ -120,9 +116,6 @@ static cl::opt<std::string> ResourceDir("resource-dir", cl::init(""),
 static cl::opt<bool> EarlyVerifier("early-verifier", cl::init(false),
                                    cl::desc("Enable verifier ASAP"));
 
-static cl::opt<bool> SyclInput("sycl", cl::init(false),
-                               cl::desc("Input file is sycl"));
-
 static cl::opt<bool> SyclKernelsOnly("sycl-kernels-only", cl::init(false),
                                      cl::desc("Process sycl kernels only"));
 
@@ -138,6 +131,12 @@ static cl::list<std::string> includeDirs("I", cl::desc("include search path"),
 
 static cl::list<std::string> defines("D", cl::desc("defines"),
                                      cl::cat(toolOptions));
+
+static cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
+                                           cl::desc("<Specify input file>"),
+                                           cl::cat(toolOptions));
+
+cl::list<std::string>  inputCommandArgs(cl::ConsumeAfter, cl::desc("<command arguments>"));
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
@@ -412,7 +411,7 @@ int main(int argc, char **argv) {
   }
   
   parseMLIR(argv[0], inputFileName, fn, includeDirs, defines, module,
-            triple, DL, SyclInput || SyclKernelsOnly);
+            triple, DL, inputCommandArgs);
   mlir::PassManager pm(&context);
 
   if (ImmediateMLIR) {
