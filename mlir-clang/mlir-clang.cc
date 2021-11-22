@@ -116,9 +116,6 @@ static cl::opt<std::string> ResourceDir("resource-dir", cl::init(""),
 static cl::opt<bool> EarlyVerifier("early-verifier", cl::init(false),
                                    cl::desc("Enable verifier ASAP"));
 
-static cl::opt<bool> SyclKernelsOnly("sycl-kernels-only", cl::init(false),
-                                     cl::desc("Process sycl kernels only"));
-
 static cl::opt<bool> Verbose("v", cl::init(false), cl::desc("Verbose"));
 
 static cl::opt<bool>
@@ -305,6 +302,8 @@ int emitBinary(char *Argv0, const char *filename,
 #include "Lib/clang-mlir.cc"
 int main(int argc, char **argv) {
 
+  bool syclKernelsOnly = false;
+  
   if (argc >= 1) {
     if (std::string(argv[1]) == "-cc1") {
       SmallVector<const char *> Argv;
@@ -341,6 +340,9 @@ int main(int argc, char **argv) {
         } else if (ref.startswith("-I")) {
           MLIRArgs.push_back("-I");
           MLIRArgs.push_back(&argv[i][2]);
+        } else if (ref == "-fintel-halide") {
+          syclKernelsOnly = true;
+          MLIRArgs.push_back(argv[i]);
         } else {
           MLIRArgs.push_back(argv[i]);
         }
@@ -406,7 +408,8 @@ int main(int argc, char **argv) {
 
   std::string fn;
 
-  if (!SyclKernelsOnly) {
+  if (!syclKernelsOnly)
+  {
     fn = cfunction.getValue();
   }
   
