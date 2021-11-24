@@ -5526,11 +5526,6 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
       continue;
     }
 
-    // if (fd->getIdentifier())
-    //    llvm::errs() << "Func name: " << fd->getName() << "\n";
-    //  llvm::errs() << "Func Body && Loc " << "\n";
-    //  fd->getBody()->dump();
-    //  fd->getLocation().dump(SM);
 
     bool externLinkage = true;
     /*
@@ -6176,11 +6171,13 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
 
     JobList &Jobs = compilation->getJobs();
     if (Jobs.size() < 1)
-     return false;
+      return false;
     for (auto &job : Jobs) {
       Command *cmd = cast<Command>(&job);
+      
       if (strcmp(cmd->getCreator().getName(), "clang"))
         return false;
+
       CommandList.push_back(&cmd->getArguments());
    }
   }
