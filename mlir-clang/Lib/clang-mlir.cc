@@ -5526,11 +5526,6 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
       continue;
     }
 
-    if (fd->getIdentifier())
-       llvm::errs() << "Func name: " << fd->getName() << "\n";
-     llvm::errs() << "Func Body && Loc " << "\n";
-     fd->getBody()->dump();
-     fd->getLocation().dump(SM);
 
     bool externLinkage = true;
     /*
@@ -6082,7 +6077,8 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
                       std::string fn, std::vector<std::string> includeDirs,
                       std::vector<std::string> defines,
                       mlir::OwningOpRef<mlir::ModuleOp> &module,
-                      llvm::Triple &triple, llvm::DataLayout &DL) {
+                      llvm::Triple &triple, llvm::DataLayout &DL,
+                      std::vector<std::string> InputCommandArgs) {
 
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
   // Buffer diagnostics from argument parsing so that we can output them using a
@@ -6162,27 +6158,39 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
 
   Argv.push_back("-emit-ast");
 
-  const unique_ptr<Compilation> compilation(
-      driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv)));
+
+  llvm::SmallVector<const ArgStringList *, 4> CommandList;
+  ArgStringList InputCommandArgList;
+
+  unique_ptr<Compilation> compilation;
+
+  if (InputCommandArgs.empty()) {
+    compilation.reset(
+      std::move(driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv))));
+
   JobList &Jobs = compilation->getJobs();
   if (Jobs.size() < 1)
     return false;
-
-  MLIRAction Act(fn, module);
-
   for (auto &job : Jobs) {
-    std::unique_ptr<CompilerInstance> Clang(new CompilerInstance());
-
     Command *cmd = cast<Command>(&job);
     if (strcmp(cmd->getCreator().getName(), "clang"))
       return false;
+      CommandList.push_back(&cmd->getArguments());
+   }
+  }
+  else {
+    for (std::string& s : InputCommandArgs) {
+      InputCommandArgList.push_back(s.c_str());
+    }
+    CommandList.push_back(&InputCommandArgList);
+  }
 
-    const ArgStringList *args = &cmd->getArguments();
+  MLIRAction Act(fn, module);
 
-    llvm::SmallVector<const char*, 16> args2 = {"-cc1", "-triple", "spir64-unknown-unknown", "-aux-triple", "x86_64-unknown-linux-gnu", "-fsycl-is-device", "-fdeclare-spirv-builtins", "-mllvm", "-sycl-opt", "-Wno-sycl-strict", "-fsycl-int-header=/tmp/no-loop-header-c4ae95.h", "-fsycl-int-footer=/tmp/no-loop-footer-572676.h", "-sycl-std=2020", "-fsycl-unique-prefix=02926462a8d9f0f8", "-Wspir-compat", "-emit-llvm", "-emit-llvm-uselists", "-disable-free", "-main-file-name", "-mrelocation-model", "static", "-mframe-pointer=all", "-fmath-errno", "-fno-rounding-math", "-fno-verbose-asm", "-mconstructor-aliases", "-aux-target-cpu", "x86-64", "-debugger-tuning=gdb", "-fcoverage-compilation-dir=/home/mahmoud/codeplay/Polygeist/llvm-project/build/test", "-resource-dir", "/home/mahmoud/codeplay/Polygeist/llvm-project/build/lib/clang/14.0.0", "-internal-isystem", "/home/mahmoud/codeplay/Polygeist/llvm-project/build/test/../bin/../include/sycl", "-internal-isystem", "/home/mahmoud/codeplay/Polygeist/llvm-project/build/test/../bin/../include", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/x86_64-linux-gnu/c++/9", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/backward", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/x86_64-linux-gnu/c++/9", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/backward", "-internal-isystem", "/home/mahmoud/codeplay/Polygeist/llvm-project/build/lib/clang/14.0.0/include", "-internal-isystem", "/usr/local/include", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../x86_64-linux-gnu/include", "-internal-externc-isystem", "/usr/include/x86_64-linux-gnu", "-internal-externc-isystem", "/include", "-internal-externc-isystem", "/usr/include", "-internal-isystem", "/home/mahmoud/codeplay/Polygeist/llvm-project/build/lib/clang/14.0.0/include", "-internal-isystem", "/usr/local/include", "-internal-isystem", "/usr/lib/gcc/x86_64-linux-gnu/9/../../../../x86_64-linux-gnu/include", "-internal-externc-isystem", "/usr/include/x86_64-linux-gnu", "-internal-externc-isystem", "/include", "-internal-externc-isystem", "/usr/include", "-std=c++17", "-fdeprecated-macro", "-fdebug-compilation-dir=/home/mahmoud/codeplay/Polygeist/llvm-project/build/test", "-ferror-limit", "19", "-fgnuc-version=4.2.1", "-fcxx-exceptions", "-fexceptions", "-fcolor-diagnostics", "-faddrsig", "-D__GCC_HAVE_DWARF2_CFI_ASM=1", "-o", "/tmp/no-loop-c59c82.bc", "-x", "c++",
-    "-D__x86_64__", "-DDISABLE_SYCL_INSTRUMENTATION_METADATA"};
+  for (const ArgStringList *args : CommandList) {
+    std::unique_ptr<CompilerInstance> Clang(new CompilerInstance());
 
-    Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(), args2,
+    Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(), *args,
                                                   Diags);
     Clang->getInvocation().getFrontendOpts().DisableFree = false;
 
@@ -6214,7 +6222,7 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
       return false;
 
     // Create TargetInfo for the other side of CUDA and OpenMP compilation.
-    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice) &&
+    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice || Clang->getLangOpts().SYCLIsDevice) &&
         !Clang->getFrontendOpts().AuxTriple.empty()) {
       auto TO = std::make_shared<clang::TargetOptions>();
       TO->Triple = llvm::Triple::normalize(Clang->getFrontendOpts().AuxTriple);
@@ -6242,14 +6250,13 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
         StringAttr::get(module->getContext(),
                         Clang->getTarget().getTriple().getTriple()));
 
-//    for (const auto &FIF : Clang->getFrontendOpts().Inputs)
+    for (const auto &FIF : Clang->getFrontendOpts().Inputs)
     {
       // Reset the ID tables if we are reusing the SourceManager and parsing
       // regular files.
       if (Clang->hasSourceManager() && !Act.isModelParsingAction())
         Clang->getSourceManager().clearIDTables();
 
-      auto FIF = FrontendInputFile(Argv[1], FrontendOptions::getInputKindForExtension("cpp"));
       if (Act.BeginSourceFile(*Clang, FIF)) {
 
         llvm::Error err = Act.Execute();
