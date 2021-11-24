@@ -5526,6 +5526,11 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
       continue;
     }
 
+    // if (fd->getIdentifier())
+    //    llvm::errs() << "Func name: " << fd->getName() << "\n";
+    //  llvm::errs() << "Func Body && Loc " << "\n";
+    //  fd->getBody()->dump();
+    //  fd->getLocation().dump(SM);
 
     bool externLinkage = true;
     /*
@@ -5561,7 +5566,8 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
 
     if ((emitIfFound.count("*") && name != "fpclassify" && !fd->isStatic() &&
          externLinkage) ||
-        emitIfFound.count(name)) {
+        emitIfFound.count(name) ||
+        fd->hasAttr<SYCLHalideAttr>()) {
       functionsToEmit.push_back(fd);
     } else {
     }
@@ -6168,13 +6174,13 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
     compilation.reset(
       std::move(driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv))));
 
-  JobList &Jobs = compilation->getJobs();
-  if (Jobs.size() < 1)
-    return false;
-  for (auto &job : Jobs) {
-    Command *cmd = cast<Command>(&job);
-    if (strcmp(cmd->getCreator().getName(), "clang"))
-      return false;
+    JobList &Jobs = compilation->getJobs();
+    if (Jobs.size() < 1)
+     return false;
+    for (auto &job : Jobs) {
+      Command *cmd = cast<Command>(&job);
+      if (strcmp(cmd->getCreator().getName(), "clang"))
+        return false;
       CommandList.push_back(&cmd->getArguments());
    }
   }
