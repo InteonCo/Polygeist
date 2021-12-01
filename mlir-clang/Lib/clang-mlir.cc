@@ -6168,17 +6168,16 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
     compilation.reset(
       std::move(driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv))));
 
-  JobList &Jobs = compilation->getJobs();
-  if (Jobs.size() < 1)
-    return false;
-  for (auto &job : Jobs) {
-    Command *cmd = cast<Command>(&job);
-    if (strcmp(cmd->getCreator().getName(), "clang"))
+    JobList &Jobs = compilation->getJobs();
+    if (Jobs.size() < 1)
       return false;
+    for (auto &job : Jobs) {
+      Command *cmd = cast<Command>(&job);
+      if (strcmp(cmd->getCreator().getName(), "clang"))
+        return false;
       CommandList.push_back(&cmd->getArguments());
-   }
-  }
-  else {
+    }
+  } else {
     for (std::string& s : InputCommandArgs) {
       InputCommandArgList.push_back(s.c_str());
     }
@@ -6250,15 +6249,13 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
         StringAttr::get(module->getContext(),
                         Clang->getTarget().getTriple().getTriple()));
 
-    for (const auto &FIF : Clang->getFrontendOpts().Inputs)
-    {
+    for (const auto &FIF : Clang->getFrontendOpts().Inputs) {
       // Reset the ID tables if we are reusing the SourceManager and parsing
       // regular files.
       if (Clang->hasSourceManager() && !Act.isModelParsingAction())
         Clang->getSourceManager().clearIDTables();
 
       if (Act.BeginSourceFile(*Clang, FIF)) {
-
         llvm::Error err = Act.Execute();
         if (err) {
           llvm::errs() << "saw error: " << err << "\n";
