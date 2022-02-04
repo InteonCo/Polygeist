@@ -4749,7 +4749,8 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
                       std::string fn, std::vector<std::string> includeDirs,
                       std::vector<std::string> defines,
                       mlir::OwningOpRef<mlir::ModuleOp> &module,
-                      llvm::Triple &triple, llvm::DataLayout &DL) {
+                      llvm::Triple &triple, llvm::DataLayout &DL,
+                      std::vector<std::string> InputCommandArgs) {
 
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
   // Buffer diagnostics from argument parsing so that we can output them using a
@@ -4836,25 +4837,38 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
 
   Argv.push_back("-emit-ast");
 
-  const unique_ptr<Compilation> compilation(
-      driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv)));
-  JobList &Jobs = compilation->getJobs();
-  if (Jobs.size() < 1)
-    return false;
+llvm::SmallVector<const ArgStringList *, 4> CommandList;
+  ArgStringList InputCommandArgList;
+
+  unique_ptr<Compilation> compilation;
+
+  if (InputCommandArgs.empty()) {
+    compilation.reset(
+      std::move(driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv))));
+
+    JobList &Jobs = compilation->getJobs();
+    if (Jobs.size() < 1)
+      return false;
+    for (auto &job : Jobs) {
+      Command *cmd = cast<Command>(&job);
+      if (strcmp(cmd->getCreator().getName(), "clang"))
+        return false;
+      CommandList.push_back(&cmd->getArguments());
+    }
+  } else {
+    for (std::string& s : InputCommandArgs) {
+      InputCommandArgList.push_back(s.c_str());
+    }
+    CommandList.push_back(&InputCommandArgList);
+  }
 
   MLIRAction Act(fn, module);
 
-  for (auto &job : Jobs) {
+  for (const ArgStringList *args : CommandList) {
     std::unique_ptr<CompilerInstance> Clang(new CompilerInstance());
 
-    Command *cmd = cast<Command>(&job);
-    if (strcmp(cmd->getCreator().getName(), "clang"))
-      return false;
-
-    const ArgStringList *args = &cmd->getArguments();
-
     Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(), *args,
-                                                 Diags);
+                                                  Diags);
     Clang->getInvocation().getFrontendOpts().DisableFree = false;
 
     void *GetExecutablePathVP = (void *)(intptr_t)GetExecutablePath;
@@ -4885,7 +4899,7 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
       return false;
 
     // Create TargetInfo for the other side of CUDA and OpenMP compilation.
-    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice) &&
+    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice  || Clang->getLangOpts().SYCLIsDevice) &&
         !Clang->getFrontendOpts().AuxTriple.empty()) {
       auto TO = std::make_shared<clang::TargetOptions>();
       TO->Triple = llvm::Triple::normalize(Clang->getFrontendOpts().AuxTriple);

@@ -97,10 +97,6 @@ static cl::opt<std::string> CUDAPath("cuda-path", cl::init(""),
 
 static cl::opt<std::string> Output("o", cl::init("-"), cl::desc("Output file"));
 
-static cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
-                                           cl::desc("<Specify input file>"),
-                                           cl::cat(toolOptions));
-
 static cl::opt<std::string> cfunction("function",
                                       cl::desc("<Specify function>"),
                                       cl::init("main"), cl::cat(toolOptions));
@@ -135,6 +131,12 @@ static cl::list<std::string> defines("D", cl::desc("defines"),
 
 static cl::list<std::string> Includes("include", cl::desc("includes"),
                                       cl::cat(toolOptions));
+
+static cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
+                                           cl::desc("<Specify input file>"),
+                                           cl::cat(toolOptions));
+
+static cl::list<std::string>  inputCommandArgs(cl::ConsumeAfter, cl::desc("<command arguments>"));
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
@@ -410,7 +412,7 @@ int main(int argc, char **argv) {
   llvm::Triple triple;
   llvm::DataLayout DL("");
   parseMLIR(argv[0], inputFileName, cfunction, includeDirs, defines, module,
-            triple, DL);
+            triple, DL, inputCommandArgs);
   mlir::PassManager pm(&context);
 
   if (ImmediateMLIR) {
