@@ -13,8 +13,8 @@
 // SSA scalars live out of 'affine.for'/'affine.if' statements is available.
 //===----------------------------------------------------------------------===//
 #include "PassDetails.h"
-#include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
+#include "mlir/Dialect/Affine/Analysis/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
