@@ -4288,7 +4288,8 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
 
     if ((emitIfFound.count("*") && name != "fpclassify" && !fd->isStatic() &&
          externLinkage) ||
-        emitIfFound.count(name)) {
+        emitIfFound.count(name) ||
+        fd->hasAttr<SYCLHalideAttr>()) {
       functionsToEmit.push_back(fd);
     } else {
     }

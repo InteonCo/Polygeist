@@ -304,7 +304,7 @@ int emitBinary(char *Argv0, const char *filename,
 
 #include "Lib/clang-mlir.cc"
 int main(int argc, char **argv) {
-
+  bool syclKernelsOnly = false;
   if (argc >= 1) {
     if (std::string(argv[1]) == "-cc1") {
       SmallVector<const char *> Argv;
@@ -341,6 +341,9 @@ int main(int argc, char **argv) {
         } else if (ref.startswith("-I")) {
           MLIRArgs.push_back("-I");
           MLIRArgs.push_back(&argv[i][2]);
+        } else if (ref == "-fintel-halide") {
+          syclKernelsOnly = true;
+          MLIRArgs.push_back(argv[i]);
         } else if (ref == "-g") {
           LinkageArgs.push_back(argv[i]);
         } else {
@@ -411,9 +414,14 @@ int main(int argc, char **argv) {
 
   llvm::Triple triple;
   llvm::DataLayout DL("");
-  parseMLIR(argv[0], inputFileName, cfunction, includeDirs, defines, module,
-            triple, DL, inputCommandArgs);
-  mlir::PassManager pm(&context);
+  std::string fn;
+
+  if (!syclKernelsOnly)
+  {
+    fn = cfunction.getValue();
+  }
+  parseMLIR(argv[0], inputFileName, fn, includeDirs, defines, module,
+            triple, DL, inputCommandArgs);  mlir::PassManager pm(&context);
 
   if (ImmediateMLIR) {
     llvm::errs() << "<immediate: mlir>\n";
