@@ -4136,6 +4136,14 @@ void MLIRASTConsumer::run() {
            FunctionDecl::TemplatedKind::
                TK_DependentFunctionTemplateSpecialization);
     std::string name;
+
+    if (FD->getIdentifier()) {
+      if (StringRef(FD->getName()).startswith("__spirv_"))
+      {
+        continue;
+      }
+    }
+
     if (auto CC = dyn_cast<CXXConstructorDecl>(FD))
       name =
           CGM.getMangledName(GlobalDecl(CC, CXXCtorType::Ctor_Complete)).str();
@@ -4258,6 +4266,12 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
     if (fd->isTemplated()) {
       continue;
     }
+
+    //  if (fd->getIdentifier())
+    //    llvm::errs() << "Func name: " << fd->getName() << "\n";
+    //  llvm::errs() << "Func Body && Loc " << "\n";
+    //  fd->getBody()->dump();
+    //  fd->getLocation().dump(SM);
 
     bool externLinkage = true;
     /*
