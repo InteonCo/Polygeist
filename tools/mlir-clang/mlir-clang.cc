@@ -466,8 +466,8 @@ int main(int argc, char **argv) {
       return 4;
     }
     if (mlir::failed(mlir::verify(module.get()))) {
-      module->dump();
-      return 5;
+//      module->dump();
+//      return 5;
     }
 
 #define optPM optPM2
@@ -590,8 +590,8 @@ int main(int argc, char **argv) {
       }
     }
     if (mlir::failed(mlir::verify(module.get()))) {
-      module->dump();
-      return 5;
+//      module->dump();
+//      return 5;
     }
   }
 
