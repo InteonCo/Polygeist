@@ -3008,6 +3008,11 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
   case clang::CastKind::CK_UserDefinedConversion: {
     return Visit(E->getSubExpr());
   }
+  case clang::CastKind::CK_AddressSpaceConversion: {
+    auto scalar = Visit(E->getSubExpr());
+    assert(scalar.isReference);
+    return ValueCategory(scalar.val, scalar.isReference);
+  }
   case clang::CastKind::CK_BaseToDerived:
   case clang::CastKind::CK_DerivedToBase:
   case clang::CastKind::CK_UncheckedDerivedToBase: {
