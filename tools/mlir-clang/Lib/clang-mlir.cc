@@ -4857,7 +4857,7 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
 
   Argv.push_back("-emit-ast");
 
-llvm::SmallVector<const ArgStringList *, 4> CommandList;
+  llvm::SmallVector<const ArgStringList *, 4> CommandList;
   ArgStringList InputCommandArgList;
 
   unique_ptr<Compilation> compilation;
@@ -4888,7 +4888,7 @@ llvm::SmallVector<const ArgStringList *, 4> CommandList;
     std::unique_ptr<CompilerInstance> Clang(new CompilerInstance());
 
     Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(), *args,
-                                                  Diags);
+                                                 Diags);
     Clang->getInvocation().getFrontendOpts().DisableFree = false;
 
     void *GetExecutablePathVP = (void *)(intptr_t)GetExecutablePath;
@@ -4919,7 +4919,8 @@ llvm::SmallVector<const ArgStringList *, 4> CommandList;
       return false;
 
     // Create TargetInfo for the other side of CUDA and OpenMP compilation.
-    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice  || Clang->getLangOpts().SYCLIsDevice) &&
+    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice  ||
+         Clang->getLangOpts().SYCLIsDevice) &&
         !Clang->getFrontendOpts().AuxTriple.empty()) {
       auto TO = std::make_shared<clang::TargetOptions>();
       TO->Triple = llvm::Triple::normalize(Clang->getFrontendOpts().AuxTriple);
