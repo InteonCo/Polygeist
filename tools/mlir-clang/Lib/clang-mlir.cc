@@ -415,10 +415,11 @@ ValueCategory MLIRScanner::VisitExtVectorElementExpr(clang::ExtVectorElementExpr
     auto mt = base.val.getType().cast<MemRefType>();
     auto shape = std::vector<int64_t>(mt.getShape());
     shape[0] = -1;
-    auto mt0 =
-        mlir::MemRefType::get(shape, mt.getElementType(),
-                              MemRefLayoutAttrInterface(), mt.getMemorySpace());
-    auto post = builder.create<polygeist::SubIndexOp>(loc, mt0, base.val, getConstantIndex(indices[0]));
+    auto mt0 = mlir::MemRefType::get(shape, mt.getElementType(),
+                                     MemRefLayoutAttrInterface(),
+                                     mt.getMemorySpace());
+    auto post = builder.create<polygeist::SubIndexOp>(loc, mt0, base.val,
+                                                      getConstantIndex(indices[0]));
     dref = ValueCategory(post, /*isReference*/ true);
   }
 
@@ -429,9 +430,9 @@ ValueCategory MLIRScanner::VisitExtVectorElementExpr(clang::ExtVectorElementExpr
   } else {
     shape.erase(shape.begin());
   }
-  auto mt0 =
-      mlir::MemRefType::get(shape, mt.getElementType(),
-                            MemRefLayoutAttrInterface(), mt.getMemorySpace());
+  auto mt0 = mlir::MemRefType::get(shape, mt.getElementType(),
+                                   MemRefLayoutAttrInterface(),
+                                   mt.getMemorySpace());
   auto post = builder.create<polygeist::SubIndexOp>(loc, mt0, dref.val,
                                                     getConstantIndex(0));
   return ValueCategory(post, /*isReference*/ true);
