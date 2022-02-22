@@ -262,6 +262,8 @@ public:
 
   ValueCategory VisitOMPParallelDirective(clang::OMPParallelDirective *);
 
+  ValueCategory VisitExtVectorElementExpr(clang::ExtVectorElementExpr *);
+
   ValueCategory
   VisitOMPParallelForDirective(clang::OMPParallelForDirective *fors);
 

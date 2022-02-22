@@ -466,8 +466,8 @@ int main(int argc, char **argv) {
       return 4;
     }
     if (mlir::failed(mlir::verify(module.get()))) {
-//      module->dump();
-//      return 5;
+      module->dump();
+      return 5;
     }
 
 #define optPM optPM2
@@ -480,11 +480,11 @@ int main(int argc, char **argv) {
         optPM.addPass(polygeist::detectReductionPass());
 
       // Disable inlining for -O0
-      // if (!Opt0) {
-      //   optPM.addPass(mlir::createCanonicalizerPass());
-      //   optPM.addPass(mlir::createCSEPass());
-      //   pm.addPass(mlir::createInlinerPass());
-      // }
+      if (!Opt0) {
+        optPM.addPass(mlir::createCanonicalizerPass());
+        optPM.addPass(mlir::createCSEPass());
+        pm.addPass(mlir::createInlinerPass());
+      }
       if (mlir::failed(pm.run(module.get()))) {
         module->dump();
         return 4;
@@ -552,7 +552,7 @@ int main(int argc, char **argv) {
       }
       optPM.addPass(mlir::createCanonicalizerPass());
     }
-//    pm.addPass(mlir::createSymbolDCEPass());
+    pm.addPass(mlir::createSymbolDCEPass());
 
     if (EmitLLVM || !EmitAssembly) {
       pm.addPass(mlir::createLowerAffinePass());
@@ -590,8 +590,8 @@ int main(int argc, char **argv) {
       }
     }
     if (mlir::failed(mlir::verify(module.get()))) {
-//      module->dump();
-//      return 5;
+      module->dump();
+      return 5;
     }
   }
 
