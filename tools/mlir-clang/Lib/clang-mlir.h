@@ -17,6 +17,7 @@
 #include "clang/Lex/PreprocessorOptions.h"
 
 #include "AffineUtils.h"
+#include "LLVMTranslator.h"
 #include "ValueCategory.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -71,6 +72,8 @@ struct MLIRASTConsumer : public ASTConsumer {
   LLVM::TypeFromLLVMIRTranslator typeTranslator;
   LLVM::TypeToLLVMIRTranslator reverseTypeTranslator;
 
+  LLVMToSYCLTranslator LLVMTranslator;
+
   MLIRASTConsumer(
       std::set<std::string> &emitIfFound, std::set<std::string> &done,
       std::map<std::string, mlir::LLVM::GlobalOp> &llvmStringGlobals,
@@ -90,7 +93,8 @@ struct MLIRASTConsumer : public ASTConsumer {
         CGM(astContext, PP.getHeaderSearchInfo().getHeaderSearchOpts(),
             PP.getPreprocessorOpts(), codegenops, llvmMod, PP.getDiagnostics()),
         error(false), typeTranslator(*module->getContext()),
-        reverseTypeTranslator(lcontext) {
+        reverseTypeTranslator(lcontext),
+        LLVMTranslator(*module->getContext(), typeTranslator) {
     addPragmaScopHandlers(PP, scopLocList);
     addPragmaEndScopHandlers(PP, scopLocList);
     addPragmaLowerToHandlers(PP, LTInfo);
