@@ -32,6 +32,8 @@
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/Dialect/SCF/Passes.h"
 #include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/SYCL/IR/SYCLOpsDialect.h"
+#include "mlir/Dialect/SYCL/IR/SYCLOpsTypes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h"
@@ -390,6 +392,10 @@ int main(int argc, char **argv) {
   context.getOrLoadDialect<mlir::memref::MemRefDialect>();
   context.getOrLoadDialect<mlir::linalg::LinalgDialect>();
   context.getOrLoadDialect<mlir::polygeist::PolygeistDialect>();
+
+  if (syclKernelsOnly) {
+    context.getOrLoadDialect<mlir::sycl::SYCLDialect>();
+  }
   // MLIRContext context;
 
   LLVM::LLVMPointerType::attachInterface<MemRefInsider>(context);
@@ -432,7 +438,10 @@ int main(int argc, char **argv) {
   bool LinkOMP = FOpenMP;
   pm.enableVerifier(EarlyVerifier);
   mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
-  if (true) {
+  // JLE_QUEL::FIXME
+  // Mem2RegPass is failing at this point
+  // Fix it, then revert condition to be true
+  if (false) {
     optPM.addPass(mlir::createCSEPass());
     optPM.addPass(mlir::createCanonicalizerPass());
     optPM.addPass(polygeist::createMem2RegPass());

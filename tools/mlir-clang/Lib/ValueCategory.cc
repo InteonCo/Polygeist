@@ -97,6 +97,18 @@ void ValueCategory::store(mlir::OpBuilder &builder, mlir::Value toStore) const {
         toStore = builder.create<polygeist::Pointer2MemrefOp>(loc, MT, toStore);
       }
     }
+    if (auto RHS = toStore.getType().dyn_cast<mlir::MemRefType>()) {
+      if (auto LHS =
+              mt.getElementType().dyn_cast<mlir::LLVM::LLVMPointerType>()) {
+        if (LHS.getElementType() != RHS.getElementType()) {
+          llvm::errs() << "warning potential store type mismatch:\n";
+          llvm::errs() << "lhs: " << val << "rhs: " << toStore << "\n";
+          llvm::errs() << "lhs: " << LHS << "rhs: " << RHS << "\n";
+        }
+        toStore =
+            builder.create<polygeist::Memref2PointerOp>(loc, LHS, toStore);
+      }
+    }
     assert(toStore.getType() ==
                val.getType().cast<MemRefType>().getElementType() &&
            "expect same type");
