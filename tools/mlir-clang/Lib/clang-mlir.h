@@ -17,7 +17,6 @@
 #include "clang/Lex/PreprocessorOptions.h"
 
 #include "AffineUtils.h"
-#include "LLVMTranslator.h"
 #include "ValueCategory.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -72,8 +71,6 @@ struct MLIRASTConsumer : public ASTConsumer {
   LLVM::TypeFromLLVMIRTranslator typeTranslator;
   LLVM::TypeToLLVMIRTranslator reverseTypeTranslator;
 
-  LLVMToSYCLTranslator LLVMTranslator;
-
   MLIRASTConsumer(
       std::set<std::string> &emitIfFound, std::set<std::string> &done,
       std::map<std::string, mlir::LLVM::GlobalOp> &llvmStringGlobals,
@@ -93,8 +90,7 @@ struct MLIRASTConsumer : public ASTConsumer {
         CGM(astContext, PP.getHeaderSearchInfo().getHeaderSearchOpts(),
             PP.getPreprocessorOpts(), codegenops, llvmMod, PP.getDiagnostics()),
         error(false), typeTranslator(*module->getContext()),
-        reverseTypeTranslator(lcontext),
-        LLVMTranslator(*module->getContext(), typeTranslator) {
+        reverseTypeTranslator(lcontext) {
     addPragmaScopHandlers(PP, scopLocList);
     addPragmaEndScopHandlers(PP, scopLocList);
     addPragmaLowerToHandlers(PP, LTInfo);
@@ -132,9 +128,10 @@ struct MLIRASTConsumer : public ASTConsumer {
   void HandleDeclContext(DeclContext *DC);
 
   std::map<const clang::RecordType *, mlir::LLVM::LLVMStructType> typeCache;
+  // JLE_QUEL::TODO: Possibly create a SYCLTypeCache
   mlir::Type getMLIRType(clang::QualType t, bool *implicitRef = nullptr,
                          bool allowMerge = true);
-
+  mlir::Type getSYCLType(const clang::RecordType *RT);
   llvm::Type *getLLVMType(clang::QualType t);
 
   mlir::Location getMLIRLocation(clang::SourceLocation loc);
