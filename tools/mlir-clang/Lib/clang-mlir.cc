@@ -3114,7 +3114,8 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
   }
   case clang::CastKind::CK_AddressSpaceConversion: {
     auto scalar = Visit(E->getSubExpr());
-    assert(scalar.isReference);
+    // JLE_QUEL::TODO (II-201)
+    // assert(scalar.isReference);
     return ValueCategory(scalar.val, scalar.isReference);
   }
   case clang::CastKind::CK_BaseToDerived:
