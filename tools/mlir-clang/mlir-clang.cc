@@ -32,6 +32,8 @@
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/Dialect/SCF/Passes.h"
 #include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/SYCL/IR/SYCLOpsDialect.h"
+#include "mlir/Dialect/SYCL/IR/SYCLOpsTypes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h"
@@ -97,10 +99,6 @@ static cl::opt<std::string> CUDAPath("cuda-path", cl::init(""),
 
 static cl::opt<std::string> Output("o", cl::init("-"), cl::desc("Output file"));
 
-static cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
-                                           cl::desc("<Specify input file>"),
-                                           cl::cat(toolOptions));
-
 static cl::opt<std::string> cfunction("function",
                                       cl::desc("<Specify function>"),
                                       cl::init("main"), cl::cat(toolOptions));
@@ -138,6 +136,12 @@ static cl::list<std::string> defines("D", cl::desc("defines"),
 
 static cl::list<std::string> Includes("include", cl::desc("includes"),
                                       cl::cat(toolOptions));
+
+static cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
+                                           cl::desc("<Specify input file>"),
+                                           cl::cat(toolOptions));
+
+static cl::list<std::string>  inputCommandArgs("args", cl::Positional, cl::desc("<command arguments>"), cl::ZeroOrMore, cl::PositionalEatsArgs);
 
 static cl::opt<std::string> TargetTripleOpt("target", cl::init(""),
                                             cl::desc("Target triple"),
@@ -319,7 +323,7 @@ int emitBinary(char *Argv0, const char *filename,
 
 #include "Lib/clang-mlir.cc"
 int main(int argc, char **argv) {
-
+  bool syclKernelsOnly = false;
   if (argc >= 1) {
     if (std::string(argv[1]) == "-cc1") {
       SmallVector<const char *> Argv;
@@ -356,6 +360,9 @@ int main(int argc, char **argv) {
         } else if (ref.startswith("-I")) {
           MLIRArgs.push_back("-I");
           MLIRArgs.push_back(&argv[i][2]);
+        } else if (ref == "-fintel-halide") {
+          syclKernelsOnly = true;
+          MLIRArgs.push_back(argv[i]);
         } else if (ref == "-g") {
           LinkageArgs.push_back(argv[i]);
         } else {
@@ -402,6 +409,10 @@ int main(int argc, char **argv) {
   context.getOrLoadDialect<mlir::memref::MemRefDialect>();
   context.getOrLoadDialect<mlir::linalg::LinalgDialect>();
   context.getOrLoadDialect<mlir::polygeist::PolygeistDialect>();
+
+  if (syclKernelsOnly) {
+    context.getOrLoadDialect<mlir::sycl::SYCLDialect>();
+  }
   // MLIRContext context;
 
   LLVM::LLVMPointerType::attachInterface<MemRefInsider>(context);
@@ -426,9 +437,14 @@ int main(int argc, char **argv) {
 
   llvm::Triple triple;
   llvm::DataLayout DL("");
-  parseMLIR(argv[0], inputFileName, cfunction, includeDirs, defines, module,
-            triple, DL);
-  mlir::PassManager pm(&context);
+  std::string fn;
+
+  if (!syclKernelsOnly)
+  {
+    fn = cfunction.getValue();
+  }
+  parseMLIR(argv[0], inputFileName, fn, includeDirs, defines, module,
+            triple, DL, inputCommandArgs);  mlir::PassManager pm(&context);
 
   if (ImmediateMLIR) {
     llvm::errs() << "<immediate: mlir>\n";
@@ -439,7 +455,10 @@ int main(int argc, char **argv) {
   bool LinkOMP = FOpenMP;
   pm.enableVerifier(EarlyVerifier);
   mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
-  if (true) {
+  // JLE_QUEL::FIXME
+  // Mem2RegPass is failing at this point
+  // Fix it, then revert condition to be true
+  if (false) {
     optPM.addPass(mlir::createCSEPass());
     optPM.addPass(mlir::createCanonicalizerPass());
     optPM.addPass(polygeist::createMem2RegPass());

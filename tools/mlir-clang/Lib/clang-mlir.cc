@@ -35,6 +35,11 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include <mlir/Dialect/SYCL/IR/SYCLOpsDialect.h>
+#include <mlir/Dialect/SYCL/IR/SYCLOpsTypes.h>
+
+static bool DEBUG_FUNCTION = false;
+static bool BREAKPOINT_FUNCTION = false;
 
 using namespace std;
 using namespace clang;
@@ -180,22 +185,24 @@ void MLIRScanner::init(mlir::FuncOp function, const FunctionDecl *fd) {
             V = builder.create<LLVM::GEPOp>(loc, V.getType(), V, idxs);
           }
 
-          bool isArray = false;
-          auto subType = LLVM::LLVMPointerType::get(
-              Glob.getMLIRType(QualType(BaseType, 0), &isArray,
-                               /*allowMerge*/ false),
-              V.getType().cast<LLVM::LLVMPointerType>().getAddressSpace());
-          assert(!isArray && "implicit reference not handled");
+          if (V.getType().isa<mlir::LLVM::LLVMPointerType>()) {
+            bool isArray = false;
+            auto subType = LLVM::LLVMPointerType::get(
+                Glob.getMLIRType(QualType(BaseType, 0), &isArray,
+                                 /*allowMerge*/ false),
+                V.getType().cast<LLVM::LLVMPointerType>().getAddressSpace());
+            assert(!isArray && "implicit reference not handled");
 
-          V = builder.create<LLVM::BitcastOp>(loc, subType, V);
+            V = builder.create<LLVM::BitcastOp>(loc, subType, V);
 
-          isArray = false;
-          auto subType2 =
-              Glob.getMLIRType(Glob.CGM.getContext().getLValueReferenceType(
-                                   QualType(BaseType, 0)),
-                               &isArray);
-          if (subType2.isa<MemRefType>())
-            V = builder.create<polygeist::Pointer2MemrefOp>(loc, subType2, V);
+            isArray = false;
+            auto subType2 =
+                Glob.getMLIRType(Glob.CGM.getContext().getLValueReferenceType(
+                                     QualType(BaseType, 0)),
+                                 &isArray);
+            if (subType2.isa<MemRefType>())
+              V = builder.create<polygeist::Pointer2MemrefOp>(loc, subType2, V);
+          }
 
           Expr *init = expr->getInit();
           if (auto clean = dyn_cast<ExprWithCleanups>(init)) {
@@ -404,6 +411,40 @@ mlir::Value MLIRScanner::createAllocOp(mlir::Type t, VarDecl *name,
   return alloc;
 }
 
+ValueCategory MLIRScanner::VisitExtVectorElementExpr(clang::ExtVectorElementExpr *expr)
+{
+  ValueCategory dref;
+  {
+    auto base = Visit(expr->getBase());
+    SmallVector<uint32_t, 4> indices;
+    expr->getEncodedElementAccess(indices);
+    assert(indices.size() == 1 && "The support for higher dimensions to be implemented.");
+    auto mt = base.val.getType().cast<MemRefType>();
+    auto shape = std::vector<int64_t>(mt.getShape());
+    shape[0] = -1;
+    auto mt0 = mlir::MemRefType::get(shape, mt.getElementType(),
+                                     MemRefLayoutAttrInterface(),
+                                     mt.getMemorySpace());
+    auto post = builder.create<polygeist::SubIndexOp>(loc, mt0, base.val,
+                                                      getConstantIndex(indices[0]));
+    dref = ValueCategory(post, /*isReference*/ true);
+  }
+
+  auto mt = dref.val.getType().cast<MemRefType>();
+  auto shape = std::vector<int64_t>(mt.getShape());
+  if (shape.size() == 1) {
+    shape[0] = -1;
+  } else {
+    shape.erase(shape.begin());
+  }
+  auto mt0 = mlir::MemRefType::get(shape, mt.getElementType(),
+                                   MemRefLayoutAttrInterface(),
+                                   mt.getMemorySpace());
+  auto post = builder.create<polygeist::SubIndexOp>(loc, mt0, dref.val,
+                                                    getConstantIndex(0));
+  return ValueCategory(post, /*isReference*/ true);
+}
+
 ValueCategory MLIRScanner::VisitConstantExpr(clang::ConstantExpr *expr) {
   auto sv = Visit(expr->getSubExpr());
   if (auto ty = getMLIRType(expr->getType()).dyn_cast<mlir::IntegerType>()) {
@@ -556,7 +597,12 @@ mlir::Attribute MLIRScanner::InitializeValueByInitListExpr(mlir::Value toInit,
       if (inner) {
         if (auto mt = toInit.getType().dyn_cast<MemRefType>()) {
           auto shape = std::vector<int64_t>(mt.getShape());
-          shape.erase(shape.begin());
+          assert(!shape.empty());
+          if (shape.size() > 1) {
+            shape.erase(shape.begin());
+          } else {
+            shape[0] = -1;
+          }
           auto mt0 = mlir::MemRefType::get(shape, mt.getElementType(),
                                            MemRefLayoutAttrInterface(),
                                            mt.getMemorySpace());
@@ -598,11 +644,33 @@ mlir::Attribute MLIRScanner::InitializeValueByInitListExpr(mlir::Value toInit,
         mlir::Value next;
         if (auto mt = toInit.getType().dyn_cast<MemRefType>()) {
           auto shape = std::vector<int64_t>(mt.getShape());
+          assert(!shape.empty());
           shape[0] = -1;
-          auto mt0 = mlir::MemRefType::get(shape, mt.getElementType(),
-                                           MemRefLayoutAttrInterface(),
-                                           mt.getMemorySpace());
-          next = builder.create<polygeist::SubIndexOp>(loc, mt0, toInit,
+
+          if (mt.getElementType()
+                  .isa<mlir::sycl::AccessorType,
+                       mlir::sycl::AccessorImplDeviceType,
+                       mlir::sycl::ArrayType, mlir::sycl::ItemType>()) {
+            llvm_unreachable("not implemented yet");
+          }
+
+          mlir::Type ET;
+          if (auto ST =
+                  mt.getElementType().dyn_cast<mlir::LLVM::LLVMStructType>()) {
+            ET = mlir::MemRefType::get(shape, ST.getBody()[i],
+                                       MemRefLayoutAttrInterface(),
+                                       mt.getMemorySpace());
+          } else if (auto ST = mt.getElementType()
+                                   .dyn_cast<mlir::sycl::ItemBaseType>()) {
+            ET = mlir::MemRefType::get(shape, ST.getBody()[i],
+                                       MemRefLayoutAttrInterface(),
+                                       mt.getMemorySpace());
+          } else {
+            ET = mlir::MemRefType::get(shape, mt.getElementType(),
+                                       MemRefLayoutAttrInterface(),
+                                       mt.getMemorySpace());
+          }
+          next = builder.create<polygeist::SubIndexOp>(loc, ET, toInit,
                                                        getConstantIndex(i));
         } else {
           auto PT = toInit.getType().cast<LLVM::LLVMPointerType>();
@@ -2816,20 +2884,90 @@ ValueCategory MLIRScanner::CommonFieldLookup(clang::QualType CT,
   } else {
     shape[0] = -1;
   }
-  auto mt0 =
-      mlir::MemRefType::get(shape, mt.getElementType(),
-                            MemRefLayoutAttrInterface(), mt.getMemorySpace());
-  shape[0] = -1;
-  auto mt1 =
-      mlir::MemRefType::get(shape, mt.getElementType(),
-                            MemRefLayoutAttrInterface(), mt.getMemorySpace());
-  mlir::Value sub0 =
-      builder.create<polygeist::SubIndexOp>(loc, mt0, val, getConstantIndex(0));
-  mlir::Value sub1 = builder.create<polygeist::SubIndexOp>(
-      loc, mt1, sub0, getConstantIndex(fnum));
-  if (isLValue)
-    sub1 = ValueCategory(sub1, /*isReference*/ true).getValue(builder);
-  return ValueCategory(sub1, /*isReference*/ true);
+
+  // JLE_QUEL::THOUGHTS
+  // This redundancy is here because we might, at some point, create
+  // an equivalent GEP or SubIndexOp operation for each sycl types or otherwise
+  // clean the redundancy
+  mlir::Value Result;
+  if (auto ST = mt.getElementType().dyn_cast<mlir::LLVM::LLVMStructType>()) {
+    assert(fnum < ST.getBody().size() && "ERROR");
+
+    const auto ElementType = ST.getBody()[fnum];
+    const auto ResultType = mlir::MemRefType::get(
+        shape, ElementType, MemRefLayoutAttrInterface(), mt.getMemorySpace());
+
+    Result = builder.create<polygeist::SubIndexOp>(loc, ResultType, val,
+                                                   getConstantIndex(fnum));
+  } else if (auto AT =
+                 mt.getElementType().dyn_cast<mlir::sycl::AccessorType>()) {
+    assert(fnum < AT.getBody().size() && "ERROR");
+
+    const auto ElementType = AT.getBody()[fnum];
+    const auto ResultType = mlir::MemRefType::get(
+        shape, ElementType, MemRefLayoutAttrInterface(), mt.getMemorySpace());
+
+    Result = builder.create<polygeist::SubIndexOp>(loc, ResultType, val,
+                                                   getConstantIndex(fnum));
+  } else if (auto AT = mt.getElementType()
+                           .dyn_cast<mlir::sycl::AccessorImplDeviceType>()) {
+    assert(fnum < AT.getBody().size() && "ERROR");
+
+    const auto ElementType = AT.getBody()[fnum];
+    const auto ResultType = mlir::MemRefType::get(
+        shape, ElementType, MemRefLayoutAttrInterface(), mt.getMemorySpace());
+
+    Result = builder.create<polygeist::SubIndexOp>(loc, ResultType, val,
+                                                   getConstantIndex(fnum));
+  } else if (auto AT = mt.getElementType().dyn_cast<mlir::sycl::ArrayType>()) {
+    assert(fnum < AT.getBody().size() && "ERROR");
+    const auto ElementType = AT.getBody()[fnum];
+
+    Result = builder.create<polygeist::SubIndexOp>(loc, ElementType, val,
+                                                   getConstantIndex(fnum));
+  } else if (auto IT = mt.getElementType().dyn_cast<mlir::sycl::IDType>()) {
+    llvm_unreachable("not implemented");
+  } else if (auto RT = mt.getElementType().dyn_cast<mlir::sycl::RangeType>()) {
+    llvm_unreachable("not implemented");
+  } else if (auto RT = mt.getElementType().dyn_cast<mlir::sycl::ItemType>()) {
+    assert(fnum < RT.getBody().size() && "ERROR");
+
+    const auto ElementType = RT.getBody()[fnum];
+    const auto ResultType = mlir::MemRefType::get(
+        shape, ElementType, MemRefLayoutAttrInterface(), mt.getMemorySpace());
+
+    Result = builder.create<polygeist::SubIndexOp>(loc, ResultType, val,
+                                                   getConstantIndex(fnum));
+  } else if (auto RT =
+                 mt.getElementType().dyn_cast<mlir::sycl::ItemBaseType>()) {
+    assert(fnum < RT.getBody().size() && "ERROR");
+
+    const auto ElementType = RT.getBody()[fnum];
+    const auto ResultType = mlir::MemRefType::get(
+        shape, ElementType, MemRefLayoutAttrInterface(), mt.getMemorySpace());
+
+    Result = builder.create<polygeist::SubIndexOp>(loc, ResultType, val,
+                                                   getConstantIndex(fnum));
+  } else {
+    auto mt0 =
+        mlir::MemRefType::get(shape, mt.getElementType(),
+                              MemRefLayoutAttrInterface(), mt.getMemorySpace());
+    shape[0] = -1;
+    auto mt1 =
+        mlir::MemRefType::get(shape, mt.getElementType(),
+                              MemRefLayoutAttrInterface(), mt.getMemorySpace());
+
+    Result = builder.create<polygeist::SubIndexOp>(loc, mt0, val,
+                                                   getConstantIndex(0));
+    Result = builder.create<polygeist::SubIndexOp>(loc, mt1, Result,
+                                                   getConstantIndex(fnum));
+  }
+
+  if (isLValue) {
+    Result = ValueCategory(Result, /*isReference*/ true).getValue(builder);
+  }
+
+  return ValueCategory(Result, /*isReference*/ true);
 }
 
 ValueCategory MLIRScanner::VisitDeclRefExpr(DeclRefExpr *E) {
@@ -3008,6 +3146,12 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
   case clang::CastKind::CK_UserDefinedConversion: {
     return Visit(E->getSubExpr());
   }
+  case clang::CastKind::CK_AddressSpaceConversion: {
+    auto scalar = Visit(E->getSubExpr());
+    // JLE_QUEL::TODO (II-201)
+    // assert(scalar.isReference);
+    return ValueCategory(scalar.val, scalar.isReference);
+  }
   case clang::CastKind::CK_BaseToDerived:
   case clang::CastKind::CK_DerivedToBase:
   case clang::CastKind::CK_UncheckedDerivedToBase: {
@@ -3036,27 +3180,27 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
       auto nval = builder.create<mlir::LLVM::BitcastOp>(loc, pt, se.val);
       return ValueCategory(nval, /*isReference*/ se.isReference);
     }
-    if (!se.val.getType().isa<mlir::MemRefType>() || se.isReference) {
-      E->dump();
-      E->getType()->dump();
-      llvm::errs() << se.val << " isref: " << (int)se.isReference << "\n";
-    }
+    if (auto ut = se.val.getType().dyn_cast<mlir::MemRefType>()) {
+      auto mt = getMLIRType((E->isLValue() || E->isXValue())
+                                ? Glob.CGM.getContext().getLValueReferenceType(
+                                      E->getType())
+                                : E->getType())
+                    .dyn_cast<mlir::MemRefType>();
 
-    // No reason this can't be handled, just isn't implemented yet.
-    assert(!se.isReference);
-    auto ut = se.val.getType().cast<mlir::MemRefType>();
-    auto mt = getMLIRType(E->getType()).cast<mlir::MemRefType>();
-    if (ut.getShape().size() != mt.getShape().size()) {
-      E->dump();
-      llvm::errs() << " se.val: " << se.val << " ut: " << ut << " mt: " << mt
-                   << "\n";
+      if (ut.getShape().size() != mt.getShape().size()) {
+        E->dump();
+        llvm::errs() << " se.val: " << se.val << " ut: " << ut << " mt: " << mt
+                     << "\n";
+      }
+      assert(ut.getShape().size() == mt.getShape().size());
+      auto ty = mlir::MemRefType::get(mt.getShape(), mt.getElementType(),
+                                      MemRefLayoutAttrInterface(),
+                                      ut.getMemorySpace());
+      return ValueCategory(
+          builder.create<mlir::memref::CastOp>(loc, se.val, ty),
+          /*isReference*/ se.isReference);
     }
-    assert(ut.getShape().size() == mt.getShape().size());
-    auto ty =
-        mlir::MemRefType::get(mt.getShape(), mt.getElementType(),
-                              MemRefLayoutAttrInterface(), ut.getMemorySpace());
-    return ValueCategory(builder.create<mlir::memref::CastOp>(loc, se.val, ty),
-                         /*isReference*/ se.isReference);
+    llvm_unreachable("type must be LLVMPointer or MemRef");
   }
   case clang::CastKind::CK_BitCast: {
 
@@ -3784,9 +3928,10 @@ MLIRASTConsumer::GetOrCreateGlobal(const ValueDecl *FD, std::string prefix,
   auto rt = getMLIRType(FD->getType());
   unsigned memspace = 0;
   bool isArray = isa<clang::ArrayType>(FD->getType());
+  bool isExtVectorType = isa<clang::ExtVectorType>(FD->getType()->getUnqualifiedDesugaredType());
 
   mlir::MemRefType mr;
-  if (!isArray) {
+  if (!isArray && !isExtVectorType) {
     mr = mlir::MemRefType::get(1, rt, {}, memspace);
   } else {
     auto mt = rt.cast<mlir::MemRefType>();
@@ -4122,8 +4267,35 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
 }
 
 void MLIRASTConsumer::run() {
+  if (DEBUG_FUNCTION) {
+    if (functionsToEmit.size()) {
+      printf("-- FUNCTION(S) TO BE EMITTED --\n");
+
+      for (const auto *FD : functionsToEmit) {
+        printf("  [+] %s(", FD->getNameAsString().c_str());
+        for (unsigned int index = 0; index < FD->getNumParams(); index += 1) {
+          printf("%s",
+                 FD->getParamDecl(index)->getType().getAsString().c_str());
+          if (index + 1 != FD->getNumParams()) {
+            printf(", ");
+          }
+        }
+        printf(")\n");
+      }
+      printf("\n");
+    }
+  }
+
   while (functionsToEmit.size()) {
     const FunctionDecl *FD = functionsToEmit.front();
+
+    if (DEBUG_FUNCTION) {
+      printf("\n");
+      printf("-- FUNCTION BEING EMITTED : \033[0;32m %s \033[0m -- \n",
+             FD->getNameAsString().c_str());
+      printf("\n");
+    }
+
     assert(FD->getBody());
     functionsToEmit.pop_front();
     assert(FD->getTemplatedKind() != FunctionDecl::TK_FunctionTemplate);
@@ -4131,6 +4303,7 @@ void MLIRASTConsumer::run() {
            FunctionDecl::TemplatedKind::
                TK_DependentFunctionTemplateSpecialization);
     std::string name;
+ 
     if (auto CC = dyn_cast<CXXConstructorDecl>(FD))
       name =
           CGM.getMangledName(GlobalDecl(CC, CXXCtorType::Ctor_Complete)).str();
@@ -4144,7 +4317,35 @@ void MLIRASTConsumer::run() {
       continue;
     done.insert(name);
     MLIRScanner ms(*this, module, LTInfo);
-    ms.init(GetOrCreateMLIRFunction(FD), FD);
+    auto Function = GetOrCreateMLIRFunction(FD);
+    ms.init(Function, FD);
+
+    if (DEBUG_FUNCTION) {
+      printf("\n");
+      Function.dump();
+      printf("\n");
+
+      if (functionsToEmit.size()) {
+        printf("-- FUNCTION(S) LEFT TO BE EMITTED --\n");
+
+        for (const auto *FD : functionsToEmit) {
+          printf("  [+] %s(", FD->getNameAsString().c_str());
+          for (unsigned int index = 0; index < FD->getNumParams(); index += 1) {
+            printf("%s",
+                   FD->getParamDecl(index)->getType().getAsString().c_str());
+            if (index + 1 != FD->getNumParams()) {
+              printf(", ");
+            }
+          }
+          printf(")\n");
+        }
+        printf("\n");
+      }
+    }
+
+    if (BREAKPOINT_FUNCTION) {
+      exit(0);
+    }
   }
 }
 
@@ -4254,6 +4455,12 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
       continue;
     }
 
+    //  if (fd->getIdentifier())
+    //    llvm::errs() << "Func name: " << fd->getName() << "\n";
+    //  llvm::errs() << "Func Body && Loc " << "\n";
+    //  fd->getBody()->dump();
+    //  fd->getLocation().dump(SM);
+
     bool externLinkage = true;
     /*
     auto LV = CGM.getFunctionLinkage(fd);
@@ -4288,7 +4495,8 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
 
     if ((emitIfFound.count("*") && name != "fpclassify" && !fd->isStatic() &&
          externLinkage) ||
-        emitIfFound.count(name)) {
+        emitIfFound.count(name) ||
+        fd->hasAttr<SYCLHalideAttr>()) {
       functionsToEmit.push_back(fd);
     } else {
     }
@@ -4431,6 +4639,11 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
       }
     }
 
+    if (ST->getName().contains("class.cl::sycl") ||
+        ST->getName().contains("struct.cl::sycl")) {
+      return getSYCLType(RT);
+    }
+
     auto CXRD = dyn_cast<CXXRecordDecl>(RT->getDecl());
     if (RT->getDecl()->isUnion() ||
         (CXRD && (!CXRD->hasDefinition() || CXRD->isPolymorphic() ||
@@ -4458,12 +4671,18 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
     SmallVector<mlir::Type, 4> types;
 
     bool innerLLVM = false;
+    bool innerSYCL = false;
     for (auto f : RT->getDecl()->fields()) {
       bool subRef = false;
       auto ty = getMLIRType(f->getType(), &subRef, /*allowMerge*/ false);
       assert(!subRef);
       innerLLVM |= ty.isa<LLVM::LLVMPointerType, LLVM::LLVMStructType,
                           LLVM::LLVMArrayType>();
+      innerSYCL |=
+          ty.isa<mlir::sycl::IDType, mlir::sycl::AccessorType,
+                 mlir::sycl::RangeType, mlir::sycl::AccessorImplDeviceType,
+                 mlir::sycl::ArrayType, mlir::sycl::ItemType,
+                 mlir::sycl::ItemBaseType>();
       types.push_back(ty);
     }
 
@@ -4473,7 +4692,7 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
       return typeCache[RT];
     }
 
-    if (!memRefABI || notAllSame || !allowMerge || innerLLVM) {
+    if (!memRefABI || notAllSame || !allowMerge || innerLLVM || innerSYCL) {
       return mlir::LLVM::LLVMStructType::getLiteral(module->getContext(),
                                                     types);
     }
@@ -4601,8 +4820,30 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
 
     if (!memRefABI ||
         subType.isa<LLVM::LLVMArrayType, LLVM::LLVMStructType,
-                    LLVM::LLVMPointerType, LLVM::LLVMFunctionType>())
-      return LLVM::LLVMPointerType::get(subType);
+                    LLVM::LLVMPointerType, LLVM::LLVMFunctionType>()) {
+      // JLE_QUEL::THOUGHTS
+      // When generating the sycl_halide_kernel, If a struct type contains
+      // SYCL types, that means that this is the functor, and we can't create a
+      // llvm pointer that contains custom aggregate types.
+      // We could create a sycl::Functor type, that will help us get rid of
+      // those conditions.
+      bool InnerSYCL = false;
+      if (auto ST = subType.dyn_cast<mlir::LLVM::LLVMStructType>()) {
+        for (auto Element : ST.getBody()) {
+          if (Element.isa<mlir::sycl::IDType, mlir::sycl::AccessorType,
+                          mlir::sycl::RangeType,
+                          mlir::sycl::AccessorImplDeviceType,
+                          mlir::sycl::ArrayType, mlir::sycl::ItemType,
+                          mlir::sycl::ItemBaseType>()) {
+            InnerSYCL = true;
+          }
+        }
+      }
+
+      if (!InnerSYCL) {
+        return LLVM::LLVMPointerType::get(subType);
+      }
+    }
 
     if (isa<clang::ArrayType>(PTT)) {
       if (subType.isa<MemRefType>()) {
@@ -4666,6 +4907,71 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
   }
   qt->dump();
   assert(0 && "unhandled type");
+}
+
+mlir::Type MLIRASTConsumer::getSYCLType(const clang::RecordType *RT) {
+  const auto *RD = RT->getAsRecordDecl();
+  llvm::SmallVector<mlir::Type, 4> Body;
+
+  for (const auto *Field : RD->fields()) {
+    Body.push_back(getMLIRType(Field->getType()));
+  }
+
+  if (const auto *CTS =
+          llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(RD)) {
+    if (CTS->getName() == "range") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::RangeType::get(module->getContext(), Dim);
+    }
+    if (CTS->getName() == "array") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::ArrayType::get(module->getContext(), Dim, Body);
+    }
+    if (CTS->getName() == "id") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::IDType::get(module->getContext(), Dim);
+    }
+    if (CTS->getName() == "accessor") {
+      const auto TypeInfo = RT->getDecl()->getASTContext().getTypeInfo(
+          CTS->getTemplateArgs().get(0).getAsType());
+      const auto Type =
+          mlir::IntegerType::get(module->getContext(), TypeInfo.Width);
+      const auto Dim =
+          CTS->getTemplateArgs().get(1).getAsIntegral().getExtValue();
+      const auto MemAccessMode = static_cast<mlir::sycl::MemoryAccessMode>(
+          CTS->getTemplateArgs().get(2).getAsIntegral().getExtValue());
+      const auto MemTargetMode = static_cast<mlir::sycl::MemoryTargetMode>(
+          CTS->getTemplateArgs().get(3).getAsIntegral().getExtValue());
+      return mlir::sycl::AccessorType::get(module->getContext(), Type, Dim,
+                                           MemAccessMode, MemTargetMode, Body);
+    }
+    if (CTS->getName() == "AccessorImplDevice") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::AccessorImplDeviceType::get(module->getContext(), Dim,
+                                                     Body);
+    }
+    if (CTS->getName() == "item") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      const auto Offset =
+          CTS->getTemplateArgs().get(1).getAsIntegral().getExtValue();
+      return mlir::sycl::ItemType::get(module->getContext(), Dim, Offset, Body);
+    }
+    if (CTS->getName() == "ItemBase") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      const auto Offset =
+          CTS->getTemplateArgs().get(1).getAsIntegral().getExtValue();
+      return mlir::sycl::ItemBaseType::get(module->getContext(), Dim, Offset,
+                                           Body);
+    }
+  }
+
+  llvm_unreachable("SYCL type not handle (yet)");
 }
 
 llvm::Type *MLIRASTConsumer::getLLVMType(clang::QualType t) {
@@ -4749,7 +5055,8 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
                       std::string fn, std::vector<std::string> includeDirs,
                       std::vector<std::string> defines,
                       mlir::OwningOpRef<mlir::ModuleOp> &module,
-                      llvm::Triple &triple, llvm::DataLayout &DL) {
+                      llvm::Triple &triple, llvm::DataLayout &DL,
+                      std::vector<std::string> InputCommandArgs) {
 
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
   // Buffer diagnostics from argument parsing so that we can output them using a
@@ -4857,22 +5164,35 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
 
   Argv.push_back("-emit-ast");
 
-  const unique_ptr<Compilation> compilation(
-      driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv)));
-  JobList &Jobs = compilation->getJobs();
-  if (Jobs.size() < 1)
-    return false;
+  llvm::SmallVector<const ArgStringList *, 4> CommandList;
+  ArgStringList InputCommandArgList;
+
+  unique_ptr<Compilation> compilation;
+
+  if (InputCommandArgs.empty()) {
+    compilation.reset(
+      std::move(driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv))));
+
+    JobList &Jobs = compilation->getJobs();
+    if (Jobs.size() < 1)
+      return false;
+    for (auto &job : Jobs) {
+      Command *cmd = cast<Command>(&job);
+      if (strcmp(cmd->getCreator().getName(), "clang"))
+        return false;
+      CommandList.push_back(&cmd->getArguments());
+    }
+  } else {
+    for (std::string& s : InputCommandArgs) {
+      InputCommandArgList.push_back(s.c_str());
+    }
+    CommandList.push_back(&InputCommandArgList);
+  }
 
   MLIRAction Act(fn, module);
 
-  for (auto &job : Jobs) {
+  for (const ArgStringList *args : CommandList) {
     std::unique_ptr<CompilerInstance> Clang(new CompilerInstance());
-
-    Command *cmd = cast<Command>(&job);
-    if (strcmp(cmd->getCreator().getName(), "clang"))
-      return false;
-
-    const ArgStringList *args = &cmd->getArguments();
 
     Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(), *args,
                                                  Diags);
@@ -4906,7 +5226,8 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
       return false;
 
     // Create TargetInfo for the other side of CUDA and OpenMP compilation.
-    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice) &&
+    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice  ||
+         Clang->getLangOpts().SYCLIsDevice) &&
         !Clang->getFrontendOpts().AuxTriple.empty()) {
       auto TO = std::make_shared<clang::TargetOptions>();
       TO->Triple = llvm::Triple::normalize(Clang->getFrontendOpts().AuxTriple);

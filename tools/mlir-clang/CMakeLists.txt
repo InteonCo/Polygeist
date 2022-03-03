@@ -29,7 +29,7 @@ add_clang_executable(mlir-clang
   Lib/utils.cc
   Lib/IfScope.cc
   Lib/TypeUtils.cc
-  Lib/CGCall.cc 
+  Lib/CGCall.cc
 )
 
 target_include_directories(mlir-clang PRIVATE
@@ -46,6 +46,7 @@ target_link_libraries(mlir-clang PRIVATE
   MLIRIR
   MLIRAnalysis
   MLIRLLVMIR
+  MLIRSYCL
   MLIRNVVMIR
   MLIROpenMP
   MLIRGPUOps
@@ -73,3 +74,7 @@ target_link_libraries(mlir-clang PRIVATE
 )
 add_dependencies(mlir-clang MLIRPolygeistOpsIncGen MLIRPolygeistPassIncGen)
 add_subdirectory(Test)
+add_custom_command(TARGET mlir-clang POST_BUILD
+	COMMAND mv $<TARGET_FILE:mlir-clang> ${CLANG_DIR}/../../../bin/mlir-clang
+	COMMENT "Moved mlir-clang to ${CLANG_DIR}/../../../bin/")
+
