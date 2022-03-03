@@ -4617,7 +4617,13 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
       }
     }
 
-    if (true && ST->getName().contains(".cl::sycl")) {
+    if (ST->getName() == "class.cl::sycl::range" || 
+        ST->getName() == "class.cl::sycl::detail::array" ||
+        ST->getName() == "class.cl::sycl::id" ||
+        ST->getName() == "class.cl::sycl::accessor" ||
+        ST->getName() == "class.cl::sycl::detail::AccessorImplDevice" ||
+        ST->getName() == "class.cl::sycl::item" ||
+        ST->getName() == "struct.cl::sycl::detail::ItemBase") {
       LLVMTranslator.setTemplateArguments(ST, RT);
       auto res = LLVMTranslator.translateType(ST);
       return res;
