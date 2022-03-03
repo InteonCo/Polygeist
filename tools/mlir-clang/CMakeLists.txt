@@ -74,7 +74,3 @@ target_link_libraries(mlir-clang PRIVATE
 )
 add_dependencies(mlir-clang MLIRPolygeistOpsIncGen MLIRPolygeistPassIncGen)
 add_subdirectory(Test)
-add_custom_command(TARGET mlir-clang POST_BUILD
-	COMMAND mv $<TARGET_FILE:mlir-clang> ${CLANG_DIR}/../../../bin/mlir-clang
-	COMMENT "Moved mlir-clang to ${CLANG_DIR}/../../../bin/")
-
