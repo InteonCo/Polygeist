@@ -115,6 +115,9 @@ static cl::opt<std::string> MArch("march", cl::init(""),
 static cl::opt<std::string> ResourceDir("resource-dir", cl::init(""),
                                         cl::desc("Resource-dir"));
 
+static cl::opt<std::string> SysRoot("sysroot", cl::init(""),
+                                    cl::desc("sysroot"));
+
 static cl::opt<bool> EarlyVerifier("early-verifier", cl::init(false),
                                    cl::desc("Enable verifier ASAP"));
 
@@ -139,6 +142,13 @@ static cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
                                            cl::cat(toolOptions));
 
 static cl::list<std::string>  inputCommandArgs("args", cl::Positional, cl::desc("<command arguments>"), cl::ZeroOrMore, cl::PositionalEatsArgs);
+
+static cl::opt<std::string> TargetTripleOpt("target", cl::init(""),
+                                            cl::desc("Target triple"),
+                                            cl::cat(toolOptions));
+
+static cl::opt<std::string>
+    McpuOpt("mcpu", cl::init(""), cl::desc("Target CPU"), cl::cat(toolOptions));
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
@@ -214,9 +224,14 @@ int emitBinary(char *Argv0, const char *filename,
 
   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagBuffer);
 
+  string TargetTriple;
+  if (TargetTripleOpt == "")
+    TargetTriple = llvm::sys::getDefaultTargetTriple();
+  else
+    TargetTriple = TargetTripleOpt;
+
   const char *binary = Argv0;
-  const unique_ptr<Driver> driver(
-      new Driver(binary, llvm::sys::getDefaultTargetTriple(), Diags));
+  const unique_ptr<Driver> driver(new Driver(binary, TargetTriple, Diags));
   driver->CC1Main = &ExecuteCC1Tool;
   std::vector<const char *> Argv;
   Argv.push_back(Argv0);
@@ -276,6 +291,8 @@ int emitBinary(char *Argv0, const char *filename,
 
   if (ResourceDir != "")
     driver->ResourceDir = ResourceDir;
+  if (SysRoot != "")
+    driver->SysRoot = SysRoot;
   SmallVector<std::pair<int, const Command *>, 4> FailingCommands;
   int Res = 0;
 
