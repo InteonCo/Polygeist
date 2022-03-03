@@ -2889,15 +2889,8 @@ ValueCategory MLIRScanner::CommonFieldLookup(clang::QualType CT,
     assert(fnum < AT.getBody().size() && "ERROR");
     const auto ElementType = AT.getBody()[fnum];
 
-    assert(ElementType.isa<mlir::LLVM::LLVMArrayType>() &&
-           "sycl::ArrayType's body should be an LLVMArrayType");
-    if (auto SubAT = ElementType.dyn_cast<mlir::LLVM::LLVMArrayType>()) {
-      const auto ResultType = mlir::MemRefType::get(
-          SubAT.getNumElements(), SubAT.getElementType(),
-          MemRefLayoutAttrInterface(), mt.getMemorySpace());
-      Result = builder.create<polygeist::SubIndexOp>(loc, ResultType, val,
-                                                     getConstantIndex(fnum));
-    }
+    Result = builder.create<polygeist::SubIndexOp>(loc, ElementType, val,
+                                                   getConstantIndex(fnum));
   } else if (auto IT = mt.getElementType().dyn_cast<mlir::sycl::IDType>()) {
     llvm_unreachable("not implemented");
   } else if (auto RT = mt.getElementType().dyn_cast<mlir::sycl::RangeType>()) {
@@ -3121,7 +3114,8 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
   }
   case clang::CastKind::CK_AddressSpaceConversion: {
     auto scalar = Visit(E->getSubExpr());
-    assert(scalar.isReference);
+    // JLE_QUEL::TODO (II-201)
+    // assert(scalar.isReference);
     return ValueCategory(scalar.val, scalar.isReference);
   }
   case clang::CastKind::CK_BaseToDerived:
@@ -4617,10 +4611,9 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
       }
     }
 
-    if (true && ST->getName().contains(".cl::sycl")) {
-      LLVMTranslator.setTemplateArguments(ST, RT);
-      auto res = LLVMTranslator.translateType(ST);
-      return res;
+    if (ST->getName().contains("class.cl::sycl") ||
+        ST->getName().contains("struct.cl::sycl")) {
+      return getSYCLType(RT);
     }
 
     auto CXRD = dyn_cast<CXXRecordDecl>(RT->getDecl());
@@ -4886,6 +4879,71 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
   }
   qt->dump();
   assert(0 && "unhandled type");
+}
+
+mlir::Type MLIRASTConsumer::getSYCLType(const clang::RecordType *RT) {
+  const auto *RD = RT->getAsRecordDecl();
+  llvm::SmallVector<mlir::Type, 4> Body;
+
+  for (const auto *Field : RD->fields()) {
+    Body.push_back(getMLIRType(Field->getType()));
+  }
+
+  if (const auto *CTS =
+          llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(RD)) {
+    if (CTS->getName() == "range") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::RangeType::get(module->getContext(), Dim);
+    }
+    if (CTS->getName() == "array") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::ArrayType::get(module->getContext(), Dim, Body);
+    }
+    if (CTS->getName() == "id") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::IDType::get(module->getContext(), Dim);
+    }
+    if (CTS->getName() == "accessor") {
+      const auto TypeInfo = RT->getDecl()->getASTContext().getTypeInfo(
+          CTS->getTemplateArgs().get(0).getAsType());
+      const auto Type =
+          mlir::IntegerType::get(module->getContext(), TypeInfo.Width);
+      const auto Dim =
+          CTS->getTemplateArgs().get(1).getAsIntegral().getExtValue();
+      const auto MemAccessMode = static_cast<mlir::sycl::MemoryAccessMode>(
+          CTS->getTemplateArgs().get(2).getAsIntegral().getExtValue());
+      const auto MemTargetMode = static_cast<mlir::sycl::MemoryTargetMode>(
+          CTS->getTemplateArgs().get(3).getAsIntegral().getExtValue());
+      return mlir::sycl::AccessorType::get(module->getContext(), Type, Dim,
+                                           MemAccessMode, MemTargetMode, Body);
+    }
+    if (CTS->getName() == "AccessorImplDevice") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::AccessorImplDeviceType::get(module->getContext(), Dim,
+                                                     Body);
+    }
+    if (CTS->getName() == "item") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      const auto Offset =
+          CTS->getTemplateArgs().get(1).getAsIntegral().getExtValue();
+      return mlir::sycl::ItemType::get(module->getContext(), Dim, Offset, Body);
+    }
+    if (CTS->getName() == "ItemBase") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      const auto Offset =
+          CTS->getTemplateArgs().get(1).getAsIntegral().getExtValue();
+      return mlir::sycl::ItemBaseType::get(module->getContext(), Dim, Offset,
+                                           Body);
+    }
+  }
+
+  llvm_unreachable("SYCL type not handle (yet)");
 }
 
 llvm::Type *MLIRASTConsumer::getLLVMType(clang::QualType t) {
