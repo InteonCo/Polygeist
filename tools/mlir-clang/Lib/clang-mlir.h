@@ -128,9 +128,10 @@ struct MLIRASTConsumer : public ASTConsumer {
   void HandleDeclContext(DeclContext *DC);
 
   std::map<const clang::RecordType *, mlir::LLVM::LLVMStructType> typeCache;
+  // JLE_QUEL::TODO: Possibly create a SYCLTypeCache
   mlir::Type getMLIRType(clang::QualType t, bool *implicitRef = nullptr,
                          bool allowMerge = true);
-
+  mlir::Type getSYCLType(const clang::RecordType *RT);
   llvm::Type *getLLVMType(clang::QualType t);
 
   mlir::Location getMLIRLocation(clang::SourceLocation loc);
