@@ -141,7 +141,10 @@ static cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
                                            cl::desc("<Specify input file>"),
                                            cl::cat(toolOptions));
 
-static cl::list<std::string>  inputCommandArgs("args", cl::Positional, cl::desc("<command arguments>"), cl::ZeroOrMore, cl::PositionalEatsArgs);
+static cl::list<std::string> inputCommandArgs("args", cl::Positional,
+                                              cl::desc("<command arguments>"),
+                                              cl::ZeroOrMore,
+                                              cl::PositionalEatsArgs);
 
 static cl::opt<std::string> TargetTripleOpt("target", cl::init(""),
                                             cl::desc("Target triple"),

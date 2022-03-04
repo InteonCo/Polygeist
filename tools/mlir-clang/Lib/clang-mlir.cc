@@ -411,22 +411,23 @@ mlir::Value MLIRScanner::createAllocOp(mlir::Type t, VarDecl *name,
   return alloc;
 }
 
-ValueCategory MLIRScanner::VisitExtVectorElementExpr(clang::ExtVectorElementExpr *expr)
-{
+ValueCategory
+MLIRScanner::VisitExtVectorElementExpr(clang::ExtVectorElementExpr *expr) {
   ValueCategory dref;
   {
     auto base = Visit(expr->getBase());
     SmallVector<uint32_t, 4> indices;
     expr->getEncodedElementAccess(indices);
-    assert(indices.size() == 1 && "The support for higher dimensions to be implemented.");
+    assert(indices.size() == 1 &&
+           "The support for higher dimensions to be implemented.");
     auto mt = base.val.getType().cast<MemRefType>();
     auto shape = std::vector<int64_t>(mt.getShape());
     shape[0] = -1;
-    auto mt0 = mlir::MemRefType::get(shape, mt.getElementType(),
-                                     MemRefLayoutAttrInterface(),
-                                     mt.getMemorySpace());
-    auto post = builder.create<polygeist::SubIndexOp>(loc, mt0, base.val,
-                                                      getConstantIndex(indices[0]));
+    auto mt0 =
+        mlir::MemRefType::get(shape, mt.getElementType(),
+                              MemRefLayoutAttrInterface(), mt.getMemorySpace());
+    auto post = builder.create<polygeist::SubIndexOp>(
+        loc, mt0, base.val, getConstantIndex(indices[0]));
     dref = ValueCategory(post, /*isReference*/ true);
   }
 
@@ -437,9 +438,9 @@ ValueCategory MLIRScanner::VisitExtVectorElementExpr(clang::ExtVectorElementExpr
   } else {
     shape.erase(shape.begin());
   }
-  auto mt0 = mlir::MemRefType::get(shape, mt.getElementType(),
-                                   MemRefLayoutAttrInterface(),
-                                   mt.getMemorySpace());
+  auto mt0 =
+      mlir::MemRefType::get(shape, mt.getElementType(),
+                            MemRefLayoutAttrInterface(), mt.getMemorySpace());
   auto post = builder.create<polygeist::SubIndexOp>(loc, mt0, dref.val,
                                                     getConstantIndex(0));
   return ValueCategory(post, /*isReference*/ true);
@@ -3928,7 +3929,8 @@ MLIRASTConsumer::GetOrCreateGlobal(const ValueDecl *FD, std::string prefix,
   auto rt = getMLIRType(FD->getType());
   unsigned memspace = 0;
   bool isArray = isa<clang::ArrayType>(FD->getType());
-  bool isExtVectorType = isa<clang::ExtVectorType>(FD->getType()->getUnqualifiedDesugaredType());
+  bool isExtVectorType =
+      isa<clang::ExtVectorType>(FD->getType()->getUnqualifiedDesugaredType());
 
   mlir::MemRefType mr;
   if (!isArray && !isExtVectorType) {
@@ -4303,7 +4305,7 @@ void MLIRASTConsumer::run() {
            FunctionDecl::TemplatedKind::
                TK_DependentFunctionTemplateSpecialization);
     std::string name;
- 
+
     if (auto CC = dyn_cast<CXXConstructorDecl>(FD))
       name =
           CGM.getMangledName(GlobalDecl(CC, CXXCtorType::Ctor_Complete)).str();
@@ -4535,6 +4537,11 @@ static void getConstantArrayShapeAndElemType(const clang::QualType &ty,
   elemTy = curTy;
 }
 
+static const std::array<const char *, 7> SYCLTypes = {
+    "range", "array",    "id", "accessor", "AccessorImplDevice",
+    "item",  "ItemBase",
+};
+
 mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
                                         bool allowMerge) {
   if (auto ET = dyn_cast<clang::ElaboratedType>(qt)) {
@@ -4641,7 +4648,13 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
 
     if (ST->getName().contains("class.cl::sycl") ||
         ST->getName().contains("struct.cl::sycl")) {
-      return getSYCLType(RT);
+      const auto TypeName = RT->getAsRecordDecl()->getName();
+      if (std::find(SYCLTypes.begin(), SYCLTypes.end(), TypeName) !=
+          SYCLTypes.end()) {
+        return getSYCLType(RT);
+      }
+      llvm::errs() << "Warning: SYCL type '" << ST->getName()
+                   << "' has not been converted to SYCL MLIR\n";
     }
 
     auto CXRD = dyn_cast<CXXRecordDecl>(RT->getDecl());
