@@ -115,6 +115,9 @@ static cl::opt<std::string> MArch("march", cl::init(""),
 static cl::opt<std::string> ResourceDir("resource-dir", cl::init(""),
                                         cl::desc("Resource-dir"));
 
+static cl::opt<std::string> SysRoot("sysroot", cl::init(""),
+                                    cl::desc("sysroot"));
+
 static cl::opt<bool> EarlyVerifier("early-verifier", cl::init(false),
                                    cl::desc("Enable verifier ASAP"));
 
@@ -138,7 +141,14 @@ static cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
                                            cl::desc("<Specify input file>"),
                                            cl::cat(toolOptions));
 
-static cl::list<std::string>  inputCommandArgs(cl::ConsumeAfter, cl::desc("<command arguments>"));
+static cl::list<std::string>  inputCommandArgs("args", cl::Positional, cl::desc("<command arguments>"), cl::ZeroOrMore, cl::PositionalEatsArgs);
+
+static cl::opt<std::string> TargetTripleOpt("target", cl::init(""),
+                                            cl::desc("Target triple"),
+                                            cl::cat(toolOptions));
+
+static cl::opt<std::string>
+    McpuOpt("mcpu", cl::init(""), cl::desc("Target CPU"), cl::cat(toolOptions));
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
@@ -214,9 +224,14 @@ int emitBinary(char *Argv0, const char *filename,
 
   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagBuffer);
 
+  string TargetTriple;
+  if (TargetTripleOpt == "")
+    TargetTriple = llvm::sys::getDefaultTargetTriple();
+  else
+    TargetTriple = TargetTripleOpt;
+
   const char *binary = Argv0;
-  const unique_ptr<Driver> driver(
-      new Driver(binary, llvm::sys::getDefaultTargetTriple(), Diags));
+  const unique_ptr<Driver> driver(new Driver(binary, TargetTriple, Diags));
   driver->CC1Main = &ExecuteCC1Tool;
   std::vector<const char *> Argv;
   Argv.push_back(Argv0);
@@ -276,6 +291,8 @@ int emitBinary(char *Argv0, const char *filename,
 
   if (ResourceDir != "")
     driver->ResourceDir = ResourceDir;
+  if (SysRoot != "")
+    driver->SysRoot = SysRoot;
   SmallVector<std::pair<int, const Command *>, 4> FailingCommands;
   int Res = 0;
 
@@ -475,8 +492,8 @@ int main(int argc, char **argv) {
       return 4;
     }
     if (mlir::failed(mlir::verify(module.get()))) {
-//      module->dump();
-//      return 5;
+      module->dump();
+      return 5;
     }
 
 #define optPM optPM2
@@ -489,11 +506,11 @@ int main(int argc, char **argv) {
         optPM.addPass(polygeist::detectReductionPass());
 
       // Disable inlining for -O0
-      // if (!Opt0) {
-      //   optPM.addPass(mlir::createCanonicalizerPass());
-      //   optPM.addPass(mlir::createCSEPass());
-      //   pm.addPass(mlir::createInlinerPass());
-      // }
+      if (!Opt0) {
+        optPM.addPass(mlir::createCanonicalizerPass());
+        optPM.addPass(mlir::createCSEPass());
+        pm.addPass(mlir::createInlinerPass());
+      }
       if (mlir::failed(pm.run(module.get()))) {
         module->dump();
         return 4;
@@ -561,7 +578,7 @@ int main(int argc, char **argv) {
       }
       optPM.addPass(mlir::createCanonicalizerPass());
     }
-//    pm.addPass(mlir::createSymbolDCEPass());
+    pm.addPass(mlir::createSymbolDCEPass());
 
     if (EmitLLVM || !EmitAssembly) {
       pm.addPass(mlir::createLowerAffinePass());
@@ -599,8 +616,8 @@ int main(int argc, char **argv) {
       }
     }
     if (mlir::failed(mlir::verify(module.get()))) {
-//      module->dump();
-//      return 5;
+      module->dump();
+      return 5;
     }
   }
 

@@ -411,6 +411,40 @@ mlir::Value MLIRScanner::createAllocOp(mlir::Type t, VarDecl *name,
   return alloc;
 }
 
+ValueCategory MLIRScanner::VisitExtVectorElementExpr(clang::ExtVectorElementExpr *expr)
+{
+  ValueCategory dref;
+  {
+    auto base = Visit(expr->getBase());
+    SmallVector<uint32_t, 4> indices;
+    expr->getEncodedElementAccess(indices);
+    assert(indices.size() == 1 && "The support for higher dimensions to be implemented.");
+    auto mt = base.val.getType().cast<MemRefType>();
+    auto shape = std::vector<int64_t>(mt.getShape());
+    shape[0] = -1;
+    auto mt0 = mlir::MemRefType::get(shape, mt.getElementType(),
+                                     MemRefLayoutAttrInterface(),
+                                     mt.getMemorySpace());
+    auto post = builder.create<polygeist::SubIndexOp>(loc, mt0, base.val,
+                                                      getConstantIndex(indices[0]));
+    dref = ValueCategory(post, /*isReference*/ true);
+  }
+
+  auto mt = dref.val.getType().cast<MemRefType>();
+  auto shape = std::vector<int64_t>(mt.getShape());
+  if (shape.size() == 1) {
+    shape[0] = -1;
+  } else {
+    shape.erase(shape.begin());
+  }
+  auto mt0 = mlir::MemRefType::get(shape, mt.getElementType(),
+                                   MemRefLayoutAttrInterface(),
+                                   mt.getMemorySpace());
+  auto post = builder.create<polygeist::SubIndexOp>(loc, mt0, dref.val,
+                                                    getConstantIndex(0));
+  return ValueCategory(post, /*isReference*/ true);
+}
+
 ValueCategory MLIRScanner::VisitConstantExpr(clang::ConstantExpr *expr) {
   auto sv = Visit(expr->getSubExpr());
   if (auto ty = getMLIRType(expr->getType()).dyn_cast<mlir::IntegerType>()) {
@@ -2889,15 +2923,8 @@ ValueCategory MLIRScanner::CommonFieldLookup(clang::QualType CT,
     assert(fnum < AT.getBody().size() && "ERROR");
     const auto ElementType = AT.getBody()[fnum];
 
-    assert(ElementType.isa<mlir::LLVM::LLVMArrayType>() &&
-           "sycl::ArrayType's body should be an LLVMArrayType");
-    if (auto SubAT = ElementType.dyn_cast<mlir::LLVM::LLVMArrayType>()) {
-      const auto ResultType = mlir::MemRefType::get(
-          SubAT.getNumElements(), SubAT.getElementType(),
-          MemRefLayoutAttrInterface(), mt.getMemorySpace());
-      Result = builder.create<polygeist::SubIndexOp>(loc, ResultType, val,
-                                                     getConstantIndex(fnum));
-    }
+    Result = builder.create<polygeist::SubIndexOp>(loc, ElementType, val,
+                                                   getConstantIndex(fnum));
   } else if (auto IT = mt.getElementType().dyn_cast<mlir::sycl::IDType>()) {
     llvm_unreachable("not implemented");
   } else if (auto RT = mt.getElementType().dyn_cast<mlir::sycl::RangeType>()) {
@@ -3121,7 +3148,8 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
   }
   case clang::CastKind::CK_AddressSpaceConversion: {
     auto scalar = Visit(E->getSubExpr());
-    assert(scalar.isReference);
+    // JLE_QUEL::TODO (II-201)
+    // assert(scalar.isReference);
     return ValueCategory(scalar.val, scalar.isReference);
   }
   case clang::CastKind::CK_BaseToDerived:
@@ -3900,9 +3928,10 @@ MLIRASTConsumer::GetOrCreateGlobal(const ValueDecl *FD, std::string prefix,
   auto rt = getMLIRType(FD->getType());
   unsigned memspace = 0;
   bool isArray = isa<clang::ArrayType>(FD->getType());
+  bool isExtVectorType = isa<clang::ExtVectorType>(FD->getType()->getUnqualifiedDesugaredType());
 
   mlir::MemRefType mr;
-  if (!isArray) {
+  if (!isArray && !isExtVectorType) {
     mr = mlir::MemRefType::get(1, rt, {}, memspace);
   } else {
     auto mt = rt.cast<mlir::MemRefType>();
@@ -4275,13 +4304,6 @@ void MLIRASTConsumer::run() {
                TK_DependentFunctionTemplateSpecialization);
     std::string name;
 
-    if (FD->getIdentifier()) {
-      if (StringRef(FD->getName()).startswith("__spirv_"))
-      {
-        continue;
-      }
-    }
-
     if (auto CC = dyn_cast<CXXConstructorDecl>(FD))
       name =
           CGM.getMangledName(GlobalDecl(CC, CXXCtorType::Ctor_Complete)).str();
@@ -4513,6 +4535,16 @@ static void getConstantArrayShapeAndElemType(const clang::QualType &ty,
   elemTy = curTy;
 }
 
+static const std::array<const char *, 7> SYCLTypes = {
+  "range",
+  "array",
+  "id",
+  "accessor",
+  "AccessorImplDevice",
+  "item",
+  "ItemBase",
+};
+
 mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
                                         bool allowMerge) {
   if (auto ET = dyn_cast<clang::ElaboratedType>(qt)) {
@@ -4617,16 +4649,13 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
       }
     }
 
-    if (ST->getName() == "class.cl::sycl::range" || 
-        ST->getName() == "class.cl::sycl::detail::array" ||
-        ST->getName() == "class.cl::sycl::id" ||
-        ST->getName() == "class.cl::sycl::accessor" ||
-        ST->getName() == "class.cl::sycl::detail::AccessorImplDevice" ||
-        ST->getName() == "class.cl::sycl::item" ||
-        ST->getName() == "struct.cl::sycl::detail::ItemBase") {
-      LLVMTranslator.setTemplateArguments(ST, RT);
-      auto res = LLVMTranslator.translateType(ST);
-      return res;
+    if (ST->getName().contains("class.cl::sycl") ||
+        ST->getName().contains("struct.cl::sycl")) {
+      const auto TypeName = RT->getAsRecordDecl()->getName();
+      if (std::find(SYCLTypes.begin(), SYCLTypes.end(), TypeName) != SYCLTypes.end()) {
+        return getSYCLType(RT);
+      }
+      llvm::errs() << "Warning: SYCL type '" << ST->getName() << "' has not been converted to SYCL MLIR\n";
     }
 
     auto CXRD = dyn_cast<CXXRecordDecl>(RT->getDecl());
@@ -4894,6 +4923,71 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
   assert(0 && "unhandled type");
 }
 
+mlir::Type MLIRASTConsumer::getSYCLType(const clang::RecordType *RT) {
+  const auto *RD = RT->getAsRecordDecl();
+  llvm::SmallVector<mlir::Type, 4> Body;
+
+  for (const auto *Field : RD->fields()) {
+    Body.push_back(getMLIRType(Field->getType()));
+  }
+
+  if (const auto *CTS =
+          llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(RD)) {
+    if (CTS->getName() == "range") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::RangeType::get(module->getContext(), Dim);
+    }
+    if (CTS->getName() == "array") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::ArrayType::get(module->getContext(), Dim, Body);
+    }
+    if (CTS->getName() == "id") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::IDType::get(module->getContext(), Dim);
+    }
+    if (CTS->getName() == "accessor") {
+      const auto TypeInfo = RT->getDecl()->getASTContext().getTypeInfo(
+          CTS->getTemplateArgs().get(0).getAsType());
+      const auto Type =
+          mlir::IntegerType::get(module->getContext(), TypeInfo.Width);
+      const auto Dim =
+          CTS->getTemplateArgs().get(1).getAsIntegral().getExtValue();
+      const auto MemAccessMode = static_cast<mlir::sycl::MemoryAccessMode>(
+          CTS->getTemplateArgs().get(2).getAsIntegral().getExtValue());
+      const auto MemTargetMode = static_cast<mlir::sycl::MemoryTargetMode>(
+          CTS->getTemplateArgs().get(3).getAsIntegral().getExtValue());
+      return mlir::sycl::AccessorType::get(module->getContext(), Type, Dim,
+                                           MemAccessMode, MemTargetMode, Body);
+    }
+    if (CTS->getName() == "AccessorImplDevice") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::AccessorImplDeviceType::get(module->getContext(), Dim,
+                                                     Body);
+    }
+    if (CTS->getName() == "item") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      const auto Offset =
+          CTS->getTemplateArgs().get(1).getAsIntegral().getExtValue();
+      return mlir::sycl::ItemType::get(module->getContext(), Dim, Offset, Body);
+    }
+    if (CTS->getName() == "ItemBase") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      const auto Offset =
+          CTS->getTemplateArgs().get(1).getAsIntegral().getExtValue();
+      return mlir::sycl::ItemBaseType::get(module->getContext(), Dim, Offset,
+                                           Body);
+    }
+  }
+
+  llvm_unreachable("SYCL type not handle (yet)");
+}
+
 llvm::Type *MLIRASTConsumer::getLLVMType(clang::QualType t) {
   if (t->isVoidType()) {
     return llvm::Type::getVoidTy(llvmMod.getContext());
@@ -5000,6 +5094,20 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
   }
   if (FOpenMP)
     Argv.push_back("-fopenmp");
+  if (TargetTripleOpt != "") {
+    char *chars = (char *)malloc(TargetTripleOpt.length() + 1);
+    memcpy(chars, TargetTripleOpt.data(), TargetTripleOpt.length());
+    chars[TargetTripleOpt.length()] = 0;
+    Argv.push_back("-target");
+    Argv.push_back(chars);
+  }
+  if (McpuOpt != "") {
+    auto a = "-mcpu=" + McpuOpt;
+    char *chars = (char *)malloc(a.length() + 1);
+    memcpy(chars, a.data(), a.length());
+    chars[a.length()] = 0;
+    Argv.push_back(chars);
+  }
   if (Standard != "") {
     auto a = "-std=" + Standard;
     char *chars = (char *)malloc(a.length() + 1);
@@ -5012,6 +5120,13 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
     char *chars = (char *)malloc(ResourceDir.length() + 1);
     memcpy(chars, ResourceDir.data(), ResourceDir.length());
     chars[ResourceDir.length()] = 0;
+    Argv.push_back(chars);
+  }
+  if (SysRoot != "") {
+    Argv.push_back("--sysroot");
+    char *chars = (char *)malloc(SysRoot.length() + 1);
+    memcpy(chars, SysRoot.data(), SysRoot.length());
+    chars[SysRoot.length()] = 0;
     Argv.push_back(chars);
   }
   if (Verbose) {
@@ -5145,14 +5260,19 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
     Clang->getTarget().adjustTargetOptions(Clang->getCodeGenOpts(),
                                            Clang->getTargetOpts());
 
-    module.get()->setAttr(
-        LLVM::LLVMDialect::getDataLayoutAttrName(),
-        StringAttr::get(module->getContext(),
-                        Clang->getTarget().getDataLayoutString()));
-    module.get()->setAttr(
-        LLVM::LLVMDialect::getTargetTripleAttrName(),
-        StringAttr::get(module->getContext(),
-                        Clang->getTarget().getTriple().getTriple()));
+    llvm::Triple jobTriple = Clang->getTarget().getTriple();
+    if (triple.str() == "" || !jobTriple.isNVPTX()) {
+      triple = jobTriple;
+      module.get()->setAttr(
+          LLVM::LLVMDialect::getTargetTripleAttrName(),
+          StringAttr::get(module->getContext(),
+                          Clang->getTarget().getTriple().getTriple()));
+      DL = llvm::DataLayout(Clang->getTarget().getDataLayoutString());
+      module.get()->setAttr(
+          LLVM::LLVMDialect::getDataLayoutAttrName(),
+          StringAttr::get(module->getContext(),
+                          Clang->getTarget().getDataLayoutString()));
+    }
 
     for (const auto &FIF : Clang->getFrontendOpts().Inputs) {
       // Reset the ID tables if we are reusing the SourceManager and parsing
@@ -5171,8 +5291,6 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
         Act.EndSourceFile();
       }
     }
-    DL = llvm::DataLayout(Clang->getTarget().getDataLayoutString());
-    triple = Clang->getTarget().getTriple();
   }
   return true;
 }
