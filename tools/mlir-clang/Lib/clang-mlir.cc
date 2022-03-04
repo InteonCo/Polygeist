@@ -4537,11 +4537,6 @@ static void getConstantArrayShapeAndElemType(const clang::QualType &ty,
   elemTy = curTy;
 }
 
-static const std::array<const char *, 7> SYCLTypes = {
-    "range", "array",    "id", "accessor", "AccessorImplDevice",
-    "item",  "ItemBase",
-};
-
 mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
                                         bool allowMerge) {
   if (auto ET = dyn_cast<clang::ElaboratedType>(qt)) {
@@ -4649,8 +4644,9 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
     if (ST->getName().contains("class.cl::sycl") ||
         ST->getName().contains("struct.cl::sycl")) {
       const auto TypeName = RT->getAsRecordDecl()->getName();
-      if (std::find(SYCLTypes.begin(), SYCLTypes.end(), TypeName) !=
-          SYCLTypes.end()) {
+      if (TypeName == "range" || TypeName == "array" || TypeName == "id" ||
+          TypeName == "accessor" || TypeName == "AccessorImplDevice" ||
+          TypeName == "item" || TypeName == "ItemBase") {
         return getSYCLType(RT);
       }
       llvm::errs() << "Warning: SYCL type '" << ST->getName()
