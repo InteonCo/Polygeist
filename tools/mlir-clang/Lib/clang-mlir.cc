@@ -4497,8 +4497,7 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
 
     if ((emitIfFound.count("*") && name != "fpclassify" && !fd->isStatic() &&
          externLinkage) ||
-        emitIfFound.count(name) ||
-        fd->hasAttr<SYCLHalideAttr>()) {
+        emitIfFound.count(name) || fd->hasAttr<SYCLHalideAttr>()) {
       functionsToEmit.push_back(fd);
     } else {
     }
@@ -4691,7 +4690,8 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
           ty.isa<mlir::sycl::IDType, mlir::sycl::AccessorType,
                  mlir::sycl::RangeType, mlir::sycl::AccessorImplDeviceType,
                  mlir::sycl::ArrayType, mlir::sycl::ItemType,
-                 mlir::sycl::ItemBaseType>();
+                 mlir::sycl::ItemBaseType, mlir::sycl::NdItemType,
+                 mlir::sycl::GroupType>();
       types.push_back(ty);
     }
 
@@ -4978,6 +4978,16 @@ mlir::Type MLIRASTConsumer::getSYCLType(const clang::RecordType *RT) {
       return mlir::sycl::ItemBaseType::get(module->getContext(), Dim, Offset,
                                            Body);
     }
+    if (CTS->getName() == "nd_item") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::NdItemType::get(module->getContext(), Dim, Body);
+    }
+    if (CTS->getName() == "group") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::GroupType::get(module->getContext(), Dim, Body);
+    }
   }
 
   llvm_unreachable("SYCL type not handle (yet)");
@@ -5179,8 +5189,8 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
   unique_ptr<Compilation> compilation;
 
   if (InputCommandArgs.empty()) {
-    compilation.reset(
-      std::move(driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv))));
+    compilation.reset(std::move(
+        driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv))));
 
     JobList &Jobs = compilation->getJobs();
     if (Jobs.size() < 1)
@@ -5192,7 +5202,7 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
       CommandList.push_back(&cmd->getArguments());
     }
   } else {
-    for (std::string& s : InputCommandArgs) {
+    for (std::string &s : InputCommandArgs) {
       InputCommandArgList.push_back(s.c_str());
     }
     CommandList.push_back(&InputCommandArgList);
@@ -5235,7 +5245,7 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
       return false;
 
     // Create TargetInfo for the other side of CUDA and OpenMP compilation.
-    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice  ||
+    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice ||
          Clang->getLangOpts().SYCLIsDevice) &&
         !Clang->getFrontendOpts().AuxTriple.empty()) {
       auto TO = std::make_shared<clang::TargetOptions>();
