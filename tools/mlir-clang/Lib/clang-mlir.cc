@@ -651,7 +651,8 @@ mlir::Attribute MLIRScanner::InitializeValueByInitListExpr(mlir::Value toInit,
           if (mt.getElementType()
                   .isa<mlir::sycl::AccessorType,
                        mlir::sycl::AccessorImplDeviceType,
-                       mlir::sycl::ArrayType, mlir::sycl::ItemType>()) {
+                       mlir::sycl::ArrayType, mlir::sycl::ItemType,
+                       mlir::sycl::NdItemType, mlir::sycl::GroupType>()) {
             llvm_unreachable("not implemented yet");
           }
 
@@ -4645,7 +4646,8 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
       const auto TypeName = RT->getAsRecordDecl()->getName();
       if (TypeName == "range" || TypeName == "array" || TypeName == "id" ||
           TypeName == "accessor" || TypeName == "AccessorImplDevice" ||
-          TypeName == "item" || TypeName == "ItemBase") {
+          TypeName == "item" || TypeName == "ItemBase" ||
+          TypeName == "nd_item" || TypeName == "group") {
         return getSYCLType(RT);
       }
       llvm::errs() << "Warning: SYCL type '" << ST->getName()
@@ -4843,7 +4845,8 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
                           mlir::sycl::RangeType,
                           mlir::sycl::AccessorImplDeviceType,
                           mlir::sycl::ArrayType, mlir::sycl::ItemType,
-                          mlir::sycl::ItemBaseType>()) {
+                          mlir::sycl::ItemBaseType, mlir::sycl::NdItemType,
+                          mlir::sycl::GroupType>()) {
             InnerSYCL = true;
           }
         }
