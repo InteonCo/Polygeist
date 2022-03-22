@@ -185,23 +185,33 @@ void MLIRScanner::init(mlir::FuncOp function, const FunctionDecl *fd) {
             V = builder.create<LLVM::GEPOp>(loc, V.getType(), V, idxs);
           }
 
-          if (V.getType().isa<mlir::LLVM::LLVMPointerType>()) {
-            bool isArray = false;
+          bool IsArray = false;
+          if (const auto PT =
+                  V.getType().dyn_cast<mlir::LLVM::LLVMPointerType>()) {
             auto subType = LLVM::LLVMPointerType::get(
-                Glob.getMLIRType(QualType(BaseType, 0), &isArray,
+                Glob.getMLIRType(QualType(BaseType, 0), &IsArray,
                                  /*allowMerge*/ false),
-                V.getType().cast<LLVM::LLVMPointerType>().getAddressSpace());
-            assert(!isArray && "implicit reference not handled");
+                PT.getAddressSpace());
+            assert(!IsArray && "implicit reference not handled");
 
             V = builder.create<LLVM::BitcastOp>(loc, subType, V);
 
-            isArray = false;
+            IsArray = false;
             auto subType2 =
                 Glob.getMLIRType(Glob.CGM.getContext().getLValueReferenceType(
                                      QualType(BaseType, 0)),
-                                 &isArray);
+                                 &IsArray);
             if (subType2.isa<MemRefType>())
               V = builder.create<polygeist::Pointer2MemrefOp>(loc, subType2, V);
+          } else if (const auto MT = V.getType().dyn_cast<mlir::MemRefType>()) {
+            const auto SubType = mlir::MemRefType::get(
+                MT.getShape(),
+                Glob.getMLIRType(QualType(BaseType, 0), &IsArray,
+                                 /*allowMerge*/ false),
+                MT.getLayout(), MT.getMemorySpace());
+            assert(!IsArray && "implicit reference not handled");
+
+            V = builder.create<mlir::memref::CastOp>(loc, V, SubType);
           }
 
           Expr *init = expr->getInit();
@@ -1331,7 +1341,13 @@ ValueCategory MLIRScanner::VisitConstructCommon(clang::CXXConstructExpr *cons,
     assert(obj.isReference);
   }
 
-  auto tocall = Glob.GetOrCreateMLIRFunction(cons->getConstructor());
+  /// If the constructor is part of the SYCL namespace, we do not want the
+  /// GetOrCreateMLIRFunction to add this FuncOp to the functionsToEmit dequeu,
+  /// since we will create it's equivalent with SYCL operations.
+  const auto ShouldEmit = !mlirclang::isNamespaceSYCL(
+      cons->getConstructor()->getEnclosingNamespaceContext());
+  auto tocall =
+      Glob.GetOrCreateMLIRFunction(cons->getConstructor(), ShouldEmit);
 
   SmallVector<std::pair<ValueCategory, clang::Expr *>> args;
   args.emplace_back(make_pair(obj, (clang::Expr *)nullptr));
@@ -1814,6 +1830,42 @@ MLIRScanner::EmitGPUCallExpr(clang::CallExpr *expr) {
     }
   }
   return make_pair(ValueCategory(), false);
+}
+
+std::pair<ValueCategory, bool>
+MLIRScanner::EmitSYCLOps(const clang::Expr *Expr,
+                         const llvm::SmallVectorImpl<mlir::Value> &Args) {
+  if (const auto *Cons = dyn_cast<clang::CXXConstructExpr>(Expr)) {
+    if (mlirclang::isNamespaceSYCL(
+            Cons->getConstructor()->getEnclosingNamespaceContext())) {
+      if (const auto *RD = dyn_cast<clang::CXXRecordDecl>(
+              Cons->getConstructor()->getParent())) {
+        auto op = builder.create<mlir::sycl::SYCLConstructorOp>(
+            loc, RD->getName(), Args);
+        /// JLE_QUEL::FIXME
+        /// Until II-213 is fixed, keep verifying "locally". Then we'll be
+        /// able to remove it
+        if (mlir::failed(op.verify())) {
+          llvm_unreachable("verifier failed");
+        }
+        return make_pair(nullptr, true);
+      }
+    }
+  } else if (const auto *Ope = dyn_cast<clang::CXXOperatorCallExpr>(Expr)) {
+    if (mlirclang::isNamespaceSYCL(Ope->getCalleeDecl()
+                                       ->getAsFunction()
+                                       ->getEnclosingNamespaceContext())) {
+      llvm_unreachable("not implemented");
+    }
+  } else if (const auto *Ope = dyn_cast<clang::CXXMemberCallExpr>(Expr)) {
+    if (mlirclang::isNamespaceSYCL(Ope->getCalleeDecl()
+                                       ->getAsFunction()
+                                       ->getEnclosingNamespaceContext())) {
+      llvm_unreachable("not implemented");
+    }
+  }
+
+  return make_pair(nullptr, false);
 }
 
 mlir::Value MLIRScanner::getConstantIndex(int x) {
@@ -4064,7 +4116,8 @@ mlir::Value MLIRASTConsumer::GetOrCreateGlobalLLVMString(
   return globalPtr;
 }
 
-mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
+mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD,
+                                                      const bool ShouldEmit) {
   assert(FD->getTemplatedKind() !=
          FunctionDecl::TemplatedKind::TK_FunctionTemplate);
   assert(
@@ -4149,7 +4202,9 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
       attrs.set("llvm.linkage",
                 mlir::LLVM::LinkageAttr::get(builder.getContext(), lnk));
       function->setAttrs(attrs.getDictionary(builder.getContext()));
-      functionsToEmit.push_back(Def);
+      if (ShouldEmit) {
+        functionsToEmit.push_back(Def);
+      }
     }
     assert(function->getParentOp() == module.get());
     return function;
@@ -4260,8 +4315,10 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
     assert(Def->getTemplatedKind() !=
            FunctionDecl::TemplatedKind::
                TK_DependentFunctionTemplateSpecialization);
-    functionsToEmit.push_back(Def);
-  } else {
+    if (ShouldEmit) {
+      functionsToEmit.push_back(Def);
+    }
+  } else if (ShouldEmit) {
     emitIfFound.insert(name);
   }
   assert(function->getParentOp() == module.get());
