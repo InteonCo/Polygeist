@@ -57,3 +57,23 @@ mlirclang::replaceFuncByOperation(FuncOp f, StringRef opName, OpBuilder &b,
                          f.getCallableResults(), {});
   return b.createOperation(opState);
 }
+
+bool mlirclang::isNamespaceSYCL(const clang::DeclContext *DC) {
+  if (!DC) {
+    return false;
+  }
+
+  if (const auto *ND = dyn_cast<clang::NamespaceDecl>(DC)) {
+    if (const auto *II = ND->getIdentifier()) {
+      if (II->isStr("sycl")) {
+        return true;
+      }
+    }
+  }
+
+  if (DC->getParent()) {
+    return mlirclang::isNamespaceSYCL(DC->getParent());
+  }
+
+  return false;
+}
