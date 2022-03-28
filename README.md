@@ -53,11 +53,13 @@ Polygeist can also be built as an external LLVM project using [LLVM_EXTERNAL_PRO
 mkdir build
 cd build
 cmake -G Ninja ../llvm-project/llvm \
-  -DLLVM_ENABLE_PROJECTS="clang;mlir" \
-  -DLLVM_EXTERNAL_PROJECTS="polygeist" \
+  -DLLVM_ENABLE_PROJECTS="clang;mlir;opencl;sycl" \
+  -DLLVM_EXTERNAL_PROJECTS="polygeist;opencl;sycl" \
   -DLLVM_EXTERNAL_POLYGEIST_SOURCE_DIR=.. \
+  -DLLVM_EXTERNAL_SYCL_SOURCE_DIR=../llvm-project/sycl \
   -DLLVM_TARGETS_TO_BUILD="host" \
   -DLLVM_ENABLE_ASSERTIONS=ON \
+  -DSYCL_HALIDE_PATH=<path to halide> \
   -DCMAKE_BUILD_TYPE=DEBUG
 ninja
 ninja check-mlir-clang
