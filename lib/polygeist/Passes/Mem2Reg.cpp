@@ -1277,9 +1277,9 @@ bool Mem2Reg::forwardStoreToLoad(mlir::Value AI, std::vector<ssize_t> idx,
     } else if (replacement->val) {
       changed = true;
       assert(orig != replacement->val);
-      assert(replacement->val.getType() == elType);
-      assert(orig.getType() == replacement->val.getType() &&
-             "mismatched load type");
+//      assert(replacement->val.getType() == elType);
+//      assert(orig.getType() == replacement->val.getType() &&
+//             "mismatched load type");
       LLVM_DEBUG(llvm::dbgs() << " replaced " << orig << " with "
                               << replacement->val << "\n");
       metaMap.replaceValue(orig, replacement->val);

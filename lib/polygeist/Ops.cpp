@@ -293,14 +293,28 @@ struct SimplifySubIndexUsers : public OpRewritePattern<SubIndexOp> {
                        .size());
             indices.insert(indices.begin(), subindex.index());
           }
-
+          const auto needsCast =
+              subindex.source().getType() != loadOp.getMemRef().getType();
           assert(subindex.source()
                      .getType()
                      .cast<MemRefType>()
                      .getShape()
                      .size() == indices.size());
-          rewriter.replaceOpWithNewOp<memref::LoadOp>(loadOp, subindex.source(),
-                                                      indices);
+          auto currLoadType = loadOp.result().getType();
+          auto newLoadOp = rewriter.replaceOpWithNewOp<memref::LoadOp>(
+              loadOp, subindex.source(), indices);
+          if (needsCast) {
+            rewriter.setInsertionPointAfter(newLoadOp);
+            auto castOp = rewriter.create<memref::CastOp>(
+                newLoadOp.getLoc(), newLoadOp.result(), currLoadType);
+            for (const auto &use : llvm::make_early_inc_range(newLoadOp->getUses())) {
+                auto op = use.getOwner();
+                if (op != castOp)
+                {
+                  op->replaceUsesOfWith(newLoadOp.result(), castOp);
+                }
+            }
+          }
           changed = true;
         }
       } else if (auto storeOp = dyn_cast<memref::StoreOp>(use.getOwner())) {
