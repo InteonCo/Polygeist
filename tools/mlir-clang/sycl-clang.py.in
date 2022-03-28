@@ -4,6 +4,9 @@ import sys
 import subprocess
 import shlex
 
+# run programs with
+# sycl-clang.py <file> 2> /dev/null
+
 def main():
     bin_path = "@CMAKE_RUNTIME_OUTPUT_DIRECTORY@"
     mlir_tool = bin_path + "/mlir-clang"
@@ -16,13 +19,10 @@ def main():
     expanded_clang_args = output[4].decode("utf-8")
     split_output = shlex.split(expanded_clang_args)
 
-    mlir_args = [mlir_tool, "--function=main", arg_file, "--args"]
+    mlir_args = [mlir_tool, "-S", "--function=main", arg_file, "--args"]
     mlir_args.extend(split_output[1:])
-    #print(mlir_args)
-    mlir_res = subprocess.Popen(mlir_args, stderr=subprocess.PIPE)
-    mlir_output = mlir_res.stderr.readlines()
-
-    print(mlir_output)
+    mlir_res = subprocess.Popen(mlir_args)
+    mlir_res.wait()
 
 if __name__ == "__main__":
     main()
