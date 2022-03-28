@@ -4209,7 +4209,8 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD,
     if (Def->isThisDeclarationADefinition()) {
       if (LV == llvm::GlobalValue::InternalLinkage ||
           LV == llvm::GlobalValue::PrivateLinkage || !Def->isDefined() ||
-          Def->hasAttr<CUDAGlobalAttr>() || Def->hasAttr<CUDADeviceAttr>()) {
+          Def->hasAttr<CUDAGlobalAttr>() || Def->hasAttr<CUDADeviceAttr>() ||
+          !ShouldEmit) {
         SymbolTable::setSymbolVisibility(function,
                                          SymbolTable::Visibility::Private);
       } else {
