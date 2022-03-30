@@ -1849,13 +1849,17 @@ MLIRScanner::EmitSYCLOps(const clang::Expr *Expr,
     if (mlirclang::isNamespaceSYCL(Ope->getCalleeDecl()
                                        ->getAsFunction()
                                        ->getEnclosingNamespaceContext())) {
-      llvm_unreachable("not implemented");
+      /// JLE_QUEL::FIXME
+      /// When starting to work on II-209 and II-210, uncomment unreachable
+      // llvm_unreachable("not implemented");
     }
   } else if (const auto *Ope = dyn_cast<clang::CXXMemberCallExpr>(Expr)) {
     if (mlirclang::isNamespaceSYCL(Ope->getCalleeDecl()
                                        ->getAsFunction()
                                        ->getEnclosingNamespaceContext())) {
-      llvm_unreachable("not implemented");
+      /// JLE_QUEL::FIXME
+      /// When starting to work on II-209 and II-210, uncomment unreachable
+      // llvm_unreachable("not implemented");
     }
   }
 
@@ -3262,15 +3266,13 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
                                       MemRefLayoutAttrInterface(),
                                       ut.getMemorySpace());
       if (ty.getElementType().getDialect().getNamespace() ==
-          mlir::sycl::SYCLDialect::getDialectNamespace()) {
-        if (ut.getElementType().getDialect().getNamespace() ==
-            mlir::sycl::SYCLDialect::getDialectNamespace()) {
-          if (ty.getElementType() != ut.getElementType()) {
-            return ValueCategory(
-                builder.create<mlir::sycl::SYCLCastOp>(loc, ty, se.val),
-                /*isReference*/ se.isReference);
-          }
-        }
+              mlir::sycl::SYCLDialect::getDialectNamespace() &&
+          ut.getElementType().getDialect().getNamespace() ==
+              mlir::sycl::SYCLDialect::getDialectNamespace() &&
+          ty.getElementType() != ut.getElementType()) {
+        return ValueCategory(
+            builder.create<mlir::sycl::SYCLCastOp>(loc, ty, se.val),
+            /*isReference*/ se.isReference);
       }
 
       /// JLE_QUEL::THOUGHT
