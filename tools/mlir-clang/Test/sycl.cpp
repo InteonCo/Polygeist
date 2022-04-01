@@ -32,3 +32,12 @@
   auto id = a == b;
 }
 
+// clang-format off
+// CHECK:   func @_Z9function1N2cl4sycl2idILi2EEES2_(%arg0: !sycl.id<2>, %arg1: !sycl.id<2>) attributes {llvm.linkage = #llvm.linkage<external>} {
+// CHECK:      %10 = call @_ZN2cl4syclplERKNS0_2idILi2EEES4_(%5, %3) : (memref<?x!sycl.id<2>>, memref<?x!sycl.id<2>>) -> !sycl.id<2>
+// CHECK-NEXT: %c0_1 = arith.constant 0 : index
+// CHECK-NEXT: memref.store %10, %1[%c0_1] : memref<?x!sycl.id<2>>
+// clang-format on
+[[intel::halide]] void function1(sycl::id<2> a, sycl::id<2> b) {
+  auto id = a + b;
+}
