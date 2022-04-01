@@ -20,3 +20,15 @@
 // clang-format on
 [[intel::halide]] void function(sycl::range<1> range) {}
 
+// clang-format off
+// CHECK: func @_Z8functionN2cl4sycl2idILi2EEES2_(%arg0: !sycl.id<2>, %arg1: !sycl.id<2>) attributes {llvm.linkage = #llvm.linkage<external>} {
+// CHECK: %[[VAL_0:.*]] = memref.cast %[[VAL_1:.*]] : memref<?x!sycl.id<2>> to memref<?x!sycl.array<2>>
+// CHECK-NEXT: %[[VAL_2:.*]] = memref.cast %[[VAL_3:.*]] : memref<?x!sycl.id<2>> to memref<?x!sycl.array<2>>
+// CHECK-NEXT: %[[VAL_4:.*]] = call @_ZNK2cl4sycl6detail5arrayILi2EEeqERKS3_(%[[VAL_0]], %[[VAL_2]]) : (memref<?x!sycl.array<2>>, memref<?x!sycl.array<2>>) -> i8
+// CHECK-NEXT: %[[VAL_C:.*]] = arith.constant 0 : index
+// CHECK-NEXT: memref.store %[[VAL_4]], %[[VAL_5:.*]][%[[VAL_C]]] : memref<?xi8>
+// clang-format on
+[[intel::halide]] void function(sycl::id<2> a, sycl::id<2> b) {
+  auto id = a == b;
+}
+
