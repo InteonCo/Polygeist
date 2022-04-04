@@ -149,10 +149,8 @@ static bool hasSyclType(const mlir::Type& type) {
           return true;
         }
       }
-    } else {
-      if (type.getDialect().getNamespace().contains("sycl")) {
-        return true;
-      }
+    } else if (type.getDialect().getNamespace().contains("sycl")) {
+      return true;
     }
     return false;
 } 
