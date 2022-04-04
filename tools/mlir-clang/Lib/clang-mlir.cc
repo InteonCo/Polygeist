@@ -1841,14 +1841,7 @@ MLIRScanner::EmitSYCLOps(const clang::Expr *Expr,
             Cons->getConstructor()->getEnclosingNamespaceContext())) {
       if (const auto *RD = dyn_cast<clang::CXXRecordDecl>(
               Cons->getConstructor()->getParent())) {
-        auto op = builder.create<mlir::sycl::SYCLConstructorOp>(
-            loc, RD->getName(), Args);
-        /// JLE_QUEL::FIXME
-        /// Until II-213 is fixed, keep verifying "locally". Then we'll be
-        /// able to remove it
-        if (mlir::failed(op.verify())) {
-          llvm_unreachable("verifier failed");
-        }
+        builder.create<mlir::sycl::SYCLConstructorOp>(loc, RD->getName(), Args);
         return make_pair(nullptr, true);
       }
     }
@@ -1856,13 +1849,17 @@ MLIRScanner::EmitSYCLOps(const clang::Expr *Expr,
     if (mlirclang::isNamespaceSYCL(Ope->getCalleeDecl()
                                        ->getAsFunction()
                                        ->getEnclosingNamespaceContext())) {
-      llvm_unreachable("not implemented");
+      /// JLE_QUEL::FIXME
+      /// When starting to work on II-209 and II-210, uncomment unreachable
+      // llvm_unreachable("not implemented");
     }
   } else if (const auto *Ope = dyn_cast<clang::CXXMemberCallExpr>(Expr)) {
     if (mlirclang::isNamespaceSYCL(Ope->getCalleeDecl()
                                        ->getAsFunction()
                                        ->getEnclosingNamespaceContext())) {
-      llvm_unreachable("not implemented");
+      /// JLE_QUEL::FIXME
+      /// When starting to work on II-209 and II-210, uncomment unreachable
+      // llvm_unreachable("not implemented");
     }
   }
 
@@ -3268,6 +3265,21 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
       auto ty = mlir::MemRefType::get(mt.getShape(), mt.getElementType(),
                                       MemRefLayoutAttrInterface(),
                                       ut.getMemorySpace());
+      if (ty.getElementType().getDialect().getNamespace() ==
+              mlir::sycl::SYCLDialect::getDialectNamespace() &&
+          ut.getElementType().getDialect().getNamespace() ==
+              mlir::sycl::SYCLDialect::getDialectNamespace() &&
+          ty.getElementType() != ut.getElementType()) {
+        return ValueCategory(
+            builder.create<mlir::sycl::SYCLCastOp>(loc, ty, se.val),
+            /*isReference*/ se.isReference);
+      }
+
+      /// JLE_QUEL::THOUGHT
+      /// This logic should never be executed since the integration of the sycl
+      /// dialect is the only one to use memref on struct type.
+      /// Keep this unreachable until we have re-enabled testing.
+      llvm_unreachable("");
       return ValueCategory(
           builder.create<mlir::memref::CastOp>(loc, se.val, ty),
           /*isReference*/ se.isReference);

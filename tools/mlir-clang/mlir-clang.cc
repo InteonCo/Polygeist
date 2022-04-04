@@ -455,6 +455,12 @@ int main(int argc, char **argv) {
     llvm::errs() << "</immediate: mlir>\n";
   }
 
+  if (mlir::failed(mlir::verify(module.get()))) {
+    module->emitError("Verifier failed");
+    module->dump();
+    return 5;
+  }
+
   bool LinkOMP = FOpenMP;
   pm.enableVerifier(EarlyVerifier);
   mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
