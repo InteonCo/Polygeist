@@ -185,23 +185,33 @@ void MLIRScanner::init(mlir::FuncOp function, const FunctionDecl *fd) {
             V = builder.create<LLVM::GEPOp>(loc, V.getType(), V, idxs);
           }
 
-          if (V.getType().isa<mlir::LLVM::LLVMPointerType>()) {
-            bool isArray = false;
+          bool IsArray = false;
+          if (const auto PT =
+                  V.getType().dyn_cast<mlir::LLVM::LLVMPointerType>()) {
             auto subType = LLVM::LLVMPointerType::get(
-                Glob.getMLIRType(QualType(BaseType, 0), &isArray,
+                Glob.getMLIRType(QualType(BaseType, 0), &IsArray,
                                  /*allowMerge*/ false),
-                V.getType().cast<LLVM::LLVMPointerType>().getAddressSpace());
-            assert(!isArray && "implicit reference not handled");
+                PT.getAddressSpace());
+            assert(!IsArray && "implicit reference not handled");
 
             V = builder.create<LLVM::BitcastOp>(loc, subType, V);
 
-            isArray = false;
+            IsArray = false;
             auto subType2 =
                 Glob.getMLIRType(Glob.CGM.getContext().getLValueReferenceType(
                                      QualType(BaseType, 0)),
-                                 &isArray);
+                                 &IsArray);
             if (subType2.isa<MemRefType>())
               V = builder.create<polygeist::Pointer2MemrefOp>(loc, subType2, V);
+          } else if (const auto MT = V.getType().dyn_cast<mlir::MemRefType>()) {
+            const auto SubType = mlir::MemRefType::get(
+                MT.getShape(),
+                Glob.getMLIRType(QualType(BaseType, 0), &IsArray,
+                                 /*allowMerge*/ false),
+                MT.getLayout(), MT.getMemorySpace());
+            assert(!IsArray && "implicit reference not handled");
+
+            V = builder.create<mlir::memref::CastOp>(loc, V, SubType);
           }
 
           Expr *init = expr->getInit();
@@ -651,7 +661,8 @@ mlir::Attribute MLIRScanner::InitializeValueByInitListExpr(mlir::Value toInit,
           if (mt.getElementType()
                   .isa<mlir::sycl::AccessorType,
                        mlir::sycl::AccessorImplDeviceType,
-                       mlir::sycl::ArrayType, mlir::sycl::ItemType>()) {
+                       mlir::sycl::ArrayType, mlir::sycl::ItemType,
+                       mlir::sycl::NdItemType, mlir::sycl::GroupType>()) {
             llvm_unreachable("not implemented yet");
           }
 
@@ -1331,7 +1342,13 @@ ValueCategory MLIRScanner::VisitConstructCommon(clang::CXXConstructExpr *cons,
     assert(obj.isReference);
   }
 
-  auto tocall = Glob.GetOrCreateMLIRFunction(cons->getConstructor());
+  /// If the constructor is part of the SYCL namespace, we do not want the
+  /// GetOrCreateMLIRFunction to add this FuncOp to the functionsToEmit dequeu,
+  /// since we will create it's equivalent with SYCL operations.
+  const auto ShouldEmit = !mlirclang::isNamespaceSYCL(
+      cons->getConstructor()->getEnclosingNamespaceContext());
+  auto tocall =
+      Glob.GetOrCreateMLIRFunction(cons->getConstructor(), ShouldEmit);
 
   SmallVector<std::pair<ValueCategory, clang::Expr *>> args;
   args.emplace_back(make_pair(obj, (clang::Expr *)nullptr));
@@ -1814,6 +1831,39 @@ MLIRScanner::EmitGPUCallExpr(clang::CallExpr *expr) {
     }
   }
   return make_pair(ValueCategory(), false);
+}
+
+std::pair<ValueCategory, bool>
+MLIRScanner::EmitSYCLOps(const clang::Expr *Expr,
+                         const llvm::SmallVectorImpl<mlir::Value> &Args) {
+  if (const auto *Cons = dyn_cast<clang::CXXConstructExpr>(Expr)) {
+    if (mlirclang::isNamespaceSYCL(
+            Cons->getConstructor()->getEnclosingNamespaceContext())) {
+      if (const auto *RD = dyn_cast<clang::CXXRecordDecl>(
+              Cons->getConstructor()->getParent())) {
+        builder.create<mlir::sycl::SYCLConstructorOp>(loc, RD->getName(), Args);
+        return make_pair(nullptr, true);
+      }
+    }
+  } else if (const auto *Ope = dyn_cast<clang::CXXOperatorCallExpr>(Expr)) {
+    if (mlirclang::isNamespaceSYCL(Ope->getCalleeDecl()
+                                       ->getAsFunction()
+                                       ->getEnclosingNamespaceContext())) {
+      /// JLE_QUEL::FIXME
+      /// When starting to work on II-209 and II-210, uncomment unreachable
+      // llvm_unreachable("not implemented");
+    }
+  } else if (const auto *Ope = dyn_cast<clang::CXXMemberCallExpr>(Expr)) {
+    if (mlirclang::isNamespaceSYCL(Ope->getCalleeDecl()
+                                       ->getAsFunction()
+                                       ->getEnclosingNamespaceContext())) {
+      /// JLE_QUEL::FIXME
+      /// When starting to work on II-209 and II-210, uncomment unreachable
+      // llvm_unreachable("not implemented");
+    }
+  }
+
+  return make_pair(nullptr, false);
 }
 
 mlir::Value MLIRScanner::getConstantIndex(int x) {
@@ -2949,6 +2999,24 @@ ValueCategory MLIRScanner::CommonFieldLookup(clang::QualType CT,
 
     Result = builder.create<polygeist::SubIndexOp>(loc, ResultType, val,
                                                    getConstantIndex(fnum));
+  } else if (auto RT = mt.getElementType().dyn_cast<mlir::sycl::NdItemType>()) {
+    assert(fnum < RT.getBody().size() && "ERROR");
+
+    const auto ElementType = RT.getBody()[fnum];
+    const auto ResultType = mlir::MemRefType::get(
+        shape, ElementType, MemRefLayoutAttrInterface(), mt.getMemorySpace());
+
+    Result = builder.create<polygeist::SubIndexOp>(loc, ResultType, val,
+                                                   getConstantIndex(fnum));
+  } else if (auto RT = mt.getElementType().dyn_cast<mlir::sycl::GroupType>()) {
+    assert(fnum < RT.getBody().size() && "ERROR");
+
+    const auto ElementType = RT.getBody()[fnum];
+    const auto ResultType = mlir::MemRefType::get(
+        shape, ElementType, MemRefLayoutAttrInterface(), mt.getMemorySpace());
+
+    Result = builder.create<polygeist::SubIndexOp>(loc, ResultType, val,
+                                                   getConstantIndex(fnum));
   } else {
     auto mt0 =
         mlir::MemRefType::get(shape, mt.getElementType(),
@@ -3197,6 +3265,21 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
       auto ty = mlir::MemRefType::get(mt.getShape(), mt.getElementType(),
                                       MemRefLayoutAttrInterface(),
                                       ut.getMemorySpace());
+      if (ty.getElementType().getDialect().getNamespace() ==
+              mlir::sycl::SYCLDialect::getDialectNamespace() &&
+          ut.getElementType().getDialect().getNamespace() ==
+              mlir::sycl::SYCLDialect::getDialectNamespace() &&
+          ty.getElementType() != ut.getElementType()) {
+        return ValueCategory(
+            builder.create<mlir::sycl::SYCLCastOp>(loc, ty, se.val),
+            /*isReference*/ se.isReference);
+      }
+
+      /// JLE_QUEL::THOUGHT
+      /// This logic should never be executed since the integration of the sycl
+      /// dialect is the only one to use memref on struct type.
+      /// Keep this unreachable until we have re-enabled testing.
+      llvm_unreachable("");
       return ValueCategory(
           builder.create<mlir::memref::CastOp>(loc, se.val, ty),
           /*isReference*/ se.isReference);
@@ -4064,7 +4147,8 @@ mlir::Value MLIRASTConsumer::GetOrCreateGlobalLLVMString(
   return globalPtr;
 }
 
-mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
+mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD,
+                                                      const bool ShouldEmit) {
   assert(FD->getTemplatedKind() !=
          FunctionDecl::TemplatedKind::TK_FunctionTemplate);
   assert(
@@ -4137,7 +4221,8 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
     if (Def->isThisDeclarationADefinition()) {
       if (LV == llvm::GlobalValue::InternalLinkage ||
           LV == llvm::GlobalValue::PrivateLinkage || !Def->isDefined() ||
-          Def->hasAttr<CUDAGlobalAttr>() || Def->hasAttr<CUDADeviceAttr>()) {
+          Def->hasAttr<CUDAGlobalAttr>() || Def->hasAttr<CUDADeviceAttr>() ||
+          !ShouldEmit) {
         SymbolTable::setSymbolVisibility(function,
                                          SymbolTable::Visibility::Private);
       } else {
@@ -4149,7 +4234,9 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
       attrs.set("llvm.linkage",
                 mlir::LLVM::LinkageAttr::get(builder.getContext(), lnk));
       function->setAttrs(attrs.getDictionary(builder.getContext()));
-      functionsToEmit.push_back(Def);
+      if (ShouldEmit) {
+        functionsToEmit.push_back(Def);
+      }
     }
     assert(function->getParentOp() == module.get());
     return function;
@@ -4240,7 +4327,8 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
 
   if (LV == llvm::GlobalValue::InternalLinkage ||
       LV == llvm::GlobalValue::PrivateLinkage || !FD->isDefined() ||
-      FD->hasAttr<CUDAGlobalAttr>() || FD->hasAttr<CUDADeviceAttr>()) {
+      FD->hasAttr<CUDAGlobalAttr>() || FD->hasAttr<CUDADeviceAttr>() ||
+      !ShouldEmit) {
     SymbolTable::setSymbolVisibility(function,
                                      SymbolTable::Visibility::Private);
   } else {
@@ -4260,8 +4348,10 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
     assert(Def->getTemplatedKind() !=
            FunctionDecl::TemplatedKind::
                TK_DependentFunctionTemplateSpecialization);
-    functionsToEmit.push_back(Def);
-  } else {
+    if (ShouldEmit) {
+      functionsToEmit.push_back(Def);
+    }
+  } else if (ShouldEmit) {
     emitIfFound.insert(name);
   }
   assert(function->getParentOp() == module.get());
@@ -4497,8 +4587,7 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
 
     if ((emitIfFound.count("*") && name != "fpclassify" && !fd->isStatic() &&
          externLinkage) ||
-        emitIfFound.count(name) ||
-        fd->hasAttr<SYCLHalideAttr>()) {
+        emitIfFound.count(name) || fd->hasAttr<SYCLHalideAttr>()) {
       functionsToEmit.push_back(fd);
     } else {
     }
@@ -4536,11 +4625,6 @@ static void getConstantArrayShapeAndElemType(const clang::QualType &ty,
 
   elemTy = curTy;
 }
-
-static const std::array<const char *, 7> SYCLTypes = {
-    "range", "array",    "id", "accessor", "AccessorImplDevice",
-    "item",  "ItemBase",
-};
 
 mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
                                         bool allowMerge) {
@@ -4649,8 +4733,10 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
     if (ST->getName().contains("class.cl::sycl") ||
         ST->getName().contains("struct.cl::sycl")) {
       const auto TypeName = RT->getAsRecordDecl()->getName();
-      if (std::find(SYCLTypes.begin(), SYCLTypes.end(), TypeName) !=
-          SYCLTypes.end()) {
+      if (TypeName == "range" || TypeName == "array" || TypeName == "id" ||
+          TypeName == "accessor" || TypeName == "AccessorImplDevice" ||
+          TypeName == "item" || TypeName == "ItemBase" ||
+          TypeName == "nd_item" || TypeName == "group") {
         return getSYCLType(RT);
       }
       llvm::errs() << "Warning: SYCL type '" << ST->getName()
@@ -4695,7 +4781,8 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
           ty.isa<mlir::sycl::IDType, mlir::sycl::AccessorType,
                  mlir::sycl::RangeType, mlir::sycl::AccessorImplDeviceType,
                  mlir::sycl::ArrayType, mlir::sycl::ItemType,
-                 mlir::sycl::ItemBaseType>();
+                 mlir::sycl::ItemBaseType, mlir::sycl::NdItemType,
+                 mlir::sycl::GroupType>();
       types.push_back(ty);
     }
 
@@ -4847,7 +4934,8 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
                           mlir::sycl::RangeType,
                           mlir::sycl::AccessorImplDeviceType,
                           mlir::sycl::ArrayType, mlir::sycl::ItemType,
-                          mlir::sycl::ItemBaseType>()) {
+                          mlir::sycl::ItemBaseType, mlir::sycl::NdItemType,
+                          mlir::sycl::GroupType>()) {
             InnerSYCL = true;
           }
         }
@@ -4981,6 +5069,16 @@ mlir::Type MLIRASTConsumer::getSYCLType(const clang::RecordType *RT) {
           CTS->getTemplateArgs().get(1).getAsIntegral().getExtValue();
       return mlir::sycl::ItemBaseType::get(module->getContext(), Dim, Offset,
                                            Body);
+    }
+    if (CTS->getName() == "nd_item") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::NdItemType::get(module->getContext(), Dim, Body);
+    }
+    if (CTS->getName() == "group") {
+      const auto Dim =
+          CTS->getTemplateArgs().get(0).getAsIntegral().getExtValue();
+      return mlir::sycl::GroupType::get(module->getContext(), Dim, Body);
     }
   }
 
@@ -5183,8 +5281,8 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
   unique_ptr<Compilation> compilation;
 
   if (InputCommandArgs.empty()) {
-    compilation.reset(
-      std::move(driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv))));
+    compilation.reset(std::move(
+        driver->BuildCompilation(llvm::ArrayRef<const char *>(Argv))));
 
     JobList &Jobs = compilation->getJobs();
     if (Jobs.size() < 1)
@@ -5196,7 +5294,7 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
       CommandList.push_back(&cmd->getArguments());
     }
   } else {
-    for (std::string& s : InputCommandArgs) {
+    for (std::string &s : InputCommandArgs) {
       InputCommandArgList.push_back(s.c_str());
     }
     CommandList.push_back(&InputCommandArgList);
@@ -5239,7 +5337,7 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
       return false;
 
     // Create TargetInfo for the other side of CUDA and OpenMP compilation.
-    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice  ||
+    if ((Clang->getLangOpts().CUDA || Clang->getLangOpts().OpenMPIsDevice ||
          Clang->getLangOpts().SYCLIsDevice) &&
         !Clang->getFrontendOpts().AuxTriple.empty()) {
       auto TO = std::make_shared<clang::TargetOptions>();

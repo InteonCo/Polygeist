@@ -10,6 +10,8 @@
 #define MLIR_TOOLS_MLIRCLANG_UTILS_H
 
 #include "llvm/ADT/ArrayRef.h"
+#include "clang/AST/DeclBase.h"
+#include "llvm/ADT/APInt.h"
 
 namespace mlir {
 class Operation;
@@ -42,6 +44,8 @@ replaceFuncByOperation(mlir::FuncOp f, llvm::StringRef opName,
                        mlir::OpBuilder &b,
                        llvm::SmallVectorImpl<mlir::Value> &input,
                        llvm::SmallVectorImpl<mlir::Value> &output);
+
+bool isNamespaceSYCL(const clang::DeclContext *DC);
 } // namespace mlirclang
 
 #endif
