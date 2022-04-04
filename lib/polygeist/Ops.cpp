@@ -142,6 +142,21 @@ public:
   }
 };
 
+static bool hasSyclType(const mlir::Type& type) {
+    if (const auto structType = type.dyn_cast<mlir::LLVM::LLVMStructType>()) {
+      for (const auto elemType : structType.getBody()) {
+        if (hasSyclType(elemType)) {
+          return true;
+        }
+      }
+    } else {
+      if (type.getDialect().getNamespace().contains("sycl")) {
+        return true;
+      }
+    }
+    return false;
+} 
+
 // When possible, simplify subindex(x) to cast(x)
 class SubToCast final : public OpRewritePattern<SubIndexOp> {
 public:
@@ -152,6 +167,12 @@ public:
     auto prev = subViewOp.source().getType().cast<MemRefType>();
     auto post = subViewOp.getType().cast<MemRefType>();
     bool legal = prev.getShape().size() == post.getShape().size();
+
+    if (legal && (prev.getElementType() != post.getElementType()) &&
+        hasSyclType(prev.getElementType())) {
+      legal = false;
+    }
+
     if (legal) {
 
       auto cidx = subViewOp.index().getDefiningOp<ConstantIndexOp>();
@@ -263,6 +284,13 @@ struct SimplifySubIndexUsers : public OpRewritePattern<SubIndexOp> {
 
   LogicalResult matchAndRewrite(SubIndexOp subindex,
                                 PatternRewriter &rewriter) const override {
+    const auto prev = subindex.source().getType().cast<MemRefType>();
+    const auto post = subindex.getType().cast<MemRefType>();
+    if ((prev.getElementType() != post.getElementType()) 
+          && hasSyclType(prev.getElementType())) {
+      return failure();
+    }
+
     bool changed = false;
 
     for (OpOperand &use : llvm::make_early_inc_range(subindex->getUses())) {
