@@ -65,3 +65,14 @@ function(sycl::accessor<cl::sycl::cl_int, 1, sycl::access::mode::read_write> A,
          sycl::item<1, true> item) {
   A[item];
 }
+
+// clang-format off
+// CHECK:   func @_Z8functionN2cl4sycl4itemILi2ELb1EEE(%arg0: !sycl.item<2, 1>) attributes {llvm.linkage = #llvm.linkage<external>} {
+// CHECK:       %c0_i32 = arith.constant 0 : i32
+// CHECK-NEXT:  %9 = call @_ZNK2cl4sycl4itemILi2ELb1EE6get_idEi(%4, %c0_i32) : (memref<?x!sycl.item<2, 1>>, i32) -> i64
+// CHECK-NEXT:  %c0_1 = arith.constant 0 : index
+// CHECK-NEXT:  memref.store %9, %1[%c0_1] : memref<?xi64>
+// clang-format on
+[[intel::halide]] void function(sycl::item<2, true> item) {
+  auto id = item.get_id(0);
+}
