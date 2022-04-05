@@ -41,3 +41,27 @@
 [[intel::halide]] void function1(sycl::id<2> a, sycl::id<2> b) {
   auto id = a + b;
 }
+
+// clang-format off
+// CHECK:   func @_Z8functionN2cl4sycl8accessorIiLi1ELNS0_6access4modeE1026ELNS2_6targetE2014ELNS2_11placeholderE0ENS0_3ext6oneapi22accessor_property_listIJEEEEENS0_2idILi1EEE(%arg0: !sycl.accessor<1>, %arg1: !sycl.id<1>) attributes {llvm.linkage = #llvm.linkage<external>} {
+// CHECK:      call @_ZN2cl4sycl2idILi1EEC1ERKS2_(%[[VAL_0:.*]], %[[VAL_1:.*]]) : (memref<?x!sycl.id<1>>, memref<?x!sycl.id<1>>) -> ()
+// CHECK-NEXT: %[[VAL_C:.*]] = arith.constant 0 : index
+// CHECK-NEXT: %[[VAL_2:.*]] = memref.load %[[VAL_0]][%[[VAL_C]]] : memref<?x!sycl.id<1>>
+// CHECK-NEXT: %[[VAL_3:.*]] = call @_ZNK2cl4sycl8accessorIiLi1ELNS0_6access4modeE1026ELNS2_6targetE2014ELNS2_11placeholderE0ENS0_3ext6oneapi22accessor_property_listIJEEEEixILi1EvEERiNS0_2idILi1EEE(%[[VAL_4:.*]], %[[VAL_2]]) : (memref<?x!sycl.accessor<1>>, !sycl.id<1>) -> memref<?xi32>
+[[intel::halide]] void function(sycl::accessor<cl::sycl::cl_int, 1,
+sycl::access::mode::read_write> A, sycl::id<1> id) {
+  A[id];
+}
+
+// clang-format off
+// CHECK:    func @_Z8functionN2cl4sycl8accessorIiLi1ELNS0_6access4modeE1026ELNS2_6targetE2014ELNS2_11placeholderE0ENS0_3ext6oneapi22accessor_property_listIJEEEEENS0_4itemILi1ELb1EEE(%arg0: !sycl.accessor<1>, %arg1: !sycl.item<1, 1>) attributes {llvm.linkage = #llvm.linkage<external>} {
+// CHECK:      call @_ZN2cl4sycl2idILi1EEC1ILi1ELb1EEERNSt9enable_ifIXeqT_Li1EEKNS0_4itemILi1EXT0_EEEE4typeE(%1, %3) : (memref<?x!sycl.id<1>>, memref<?x!sycl.item<1, 1>>) -> ()
+// CHECK-NEXT: %c0_1 = arith.constant 0 : index
+// CHECK-NEXT: %9 = memref.load %1[%c0_1] : memref<?x!sycl.id<1>>
+// CHECK-NEXT: %10 = call @_ZNK2cl4sycl8accessorIiLi1ELNS0_6access4modeE1026ELNS2_6targetE2014ELNS2_11placeholderE0ENS0_3ext6oneapi22accessor_property_listIJEEEEixILi1EvEERiNS0_2idILi1EEE(%5, %9) : (memref<?x!sycl.accessor<1>>, !sycl.id<1>) -> memref<?xi32>
+// clang-format on
+[[intel::halide]] void
+function(sycl::accessor<cl::sycl::cl_int, 1, sycl::access::mode::read_write> A,
+         sycl::item<1, true> item) {
+  A[item];
+}
