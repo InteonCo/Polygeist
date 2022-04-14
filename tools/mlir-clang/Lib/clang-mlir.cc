@@ -1833,37 +1833,51 @@ MLIRScanner::EmitGPUCallExpr(clang::CallExpr *expr) {
   return make_pair(ValueCategory(), false);
 }
 
-std::pair<ValueCategory, bool>
+std::pair<mlir::Operation *, bool>
 MLIRScanner::EmitSYCLOps(const clang::Expr *Expr,
                          const llvm::SmallVectorImpl<mlir::Value> &Args) {
-  if (const auto *Cons = dyn_cast<clang::CXXConstructExpr>(Expr)) {
-    if (mlirclang::isNamespaceSYCL(
-            Cons->getConstructor()->getEnclosingNamespaceContext())) {
-      if (const auto *RD = dyn_cast<clang::CXXRecordDecl>(
-              Cons->getConstructor()->getParent())) {
-        builder.create<mlir::sycl::SYCLConstructorOp>(loc, RD->getName(), Args);
-        return make_pair(nullptr, true);
+  mlir::Operation *Op = nullptr;
+  bool Res = false;
+
+  if (const auto *ConsExpr = dyn_cast<clang::CXXConstructExpr>(Expr)) {
+    const auto *Func = ConsExpr->getConstructor()->getAsFunction();
+
+    if (mlirclang::isNamespaceSYCL(Func->getEnclosingNamespaceContext())) {
+      if (const auto *RD = dyn_cast<clang::CXXRecordDecl>(Func->getParent())) {
+        Op = builder.create<mlir::sycl::SYCLConstructorOp>(loc, RD->getName(),
+                                                           Args);
+        Res = true;
       }
     }
-  } else if (const auto *Ope = dyn_cast<clang::CXXOperatorCallExpr>(Expr)) {
-    if (mlirclang::isNamespaceSYCL(Ope->getCalleeDecl()
-                                       ->getAsFunction()
-                                       ->getEnclosingNamespaceContext())) {
-      /// JLE_QUEL::FIXME
-      /// When starting to work on II-209 and II-210, uncomment unreachable
-      // llvm_unreachable("not implemented");
-    }
-  } else if (const auto *Ope = dyn_cast<clang::CXXMemberCallExpr>(Expr)) {
-    if (mlirclang::isNamespaceSYCL(Ope->getCalleeDecl()
-                                       ->getAsFunction()
-                                       ->getEnclosingNamespaceContext())) {
-      /// JLE_QUEL::FIXME
-      /// When starting to work on II-209 and II-210, uncomment unreachable
-      // llvm_unreachable("not implemented");
+  } else if (const auto *CallExpr = dyn_cast<clang::CallExpr>(Expr)) {
+    const auto *Func = CallExpr->getCalleeDecl()->getAsFunction();
+
+    if (mlirclang::isNamespaceSYCL(Func->getEnclosingNamespaceContext())) {
+      auto OptFuncType = llvm::Optional<llvm::StringRef>{llvm::None};
+      if (const auto *RD = dyn_cast<clang::CXXRecordDecl>(Func->getParent())) {
+        OptFuncType = RD->getName();
+      } else {
+        /// JLE_QUEL::TODO
+        /// Handle case where we can't get the parent because the callee is not
+        /// a member function
+        llvm::errs()
+            << "Warning: generating sycl call op from unqualified function '"
+            << Func->getNameAsString() << "'\n";
+      }
+
+      auto OptRetType = llvm::Optional<mlir::Type>{llvm::None};
+      const auto RetType = getMLIRType(Func->getReturnType());
+      if (!RetType.isa<mlir::NoneType>()) {
+        OptRetType = RetType;
+      }
+
+      Op = builder.create<mlir::sycl::SYCLCallOp>(
+          loc, OptRetType, OptFuncType, Func->getNameAsString(), Args);
+      Res = true;
     }
   }
 
-  return make_pair(nullptr, false);
+  return make_pair(Op, Res);
 }
 
 mlir::Value MLIRScanner::getConstantIndex(int x) {

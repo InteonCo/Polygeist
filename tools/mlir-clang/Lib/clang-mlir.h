@@ -286,7 +286,7 @@ public:
 
   std::pair<ValueCategory, bool> EmitBuiltinOps(clang::CallExpr *expr);
 
-  std::pair<ValueCategory, bool>
+  std::pair<mlir::Operation *, bool>
   EmitSYCLOps(const clang::Expr *Expr,
               const llvm::SmallVectorImpl<mlir::Value> &Args);
 
