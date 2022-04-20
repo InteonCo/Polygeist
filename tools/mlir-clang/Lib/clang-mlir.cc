@@ -1833,11 +1833,10 @@ MLIRScanner::EmitGPUCallExpr(clang::CallExpr *expr) {
   return make_pair(ValueCategory(), false);
 }
 
-std::pair<mlir::Operation *, bool>
+mlir::Operation *
 MLIRScanner::EmitSYCLOps(const clang::Expr *Expr,
                          const llvm::SmallVectorImpl<mlir::Value> &Args) {
   mlir::Operation *Op = nullptr;
-  bool Res = false;
 
   if (const auto *ConsExpr = dyn_cast<clang::CXXConstructExpr>(Expr)) {
     const auto *Func = ConsExpr->getConstructor()->getAsFunction();
@@ -1846,7 +1845,6 @@ MLIRScanner::EmitSYCLOps(const clang::Expr *Expr,
       if (const auto *RD = dyn_cast<clang::CXXRecordDecl>(Func->getParent())) {
         Op = builder.create<mlir::sycl::SYCLConstructorOp>(loc, RD->getName(),
                                                            Args);
-        Res = true;
       }
     }
   } else if (const auto *CallExpr = dyn_cast<clang::CallExpr>(Expr)) {
@@ -1873,11 +1871,10 @@ MLIRScanner::EmitSYCLOps(const clang::Expr *Expr,
 
       Op = builder.create<mlir::sycl::SYCLCallOp>(
           loc, OptRetType, OptFuncType, Func->getNameAsString(), Args);
-      Res = true;
     }
   }
 
-  return make_pair(Op, Res);
+  return Op;
 }
 
 mlir::Value MLIRScanner::getConstantIndex(int x) {

@@ -312,11 +312,8 @@ ValueCategory MLIRScanner::CallHelper(
   castCallerArgs(tocall, args, builder);
 
   /// Try to emit SYCL operations before creating a CallOp
-  mlir::Operation *op = nullptr;
-  const auto ValEmitted = EmitSYCLOps(expr, args);
-  if (ValEmitted.second) {
-    op = ValEmitted.first;
-  } else {
+  mlir::Operation *op = EmitSYCLOps(expr, args);
+  if (!op) {
     op = builder.create<mlir::CallOp>(loc, tocall, args);
   }
 
