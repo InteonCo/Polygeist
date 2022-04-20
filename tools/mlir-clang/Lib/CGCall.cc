@@ -311,13 +311,11 @@ ValueCategory MLIRScanner::CallHelper(
   // Try to rescue some mismatched types.
   castCallerArgs(tocall, args, builder);
 
-  /// Try to emit SYCL operations instead of creating a CallOp
-  const auto ValEmitted = EmitSYCLOps(expr, args);
-  if (ValEmitted.second) {
-    return ValEmitted.first;
+  /// Try to emit SYCL operations before creating a CallOp
+  mlir::Operation *op = EmitSYCLOps(expr, args);
+  if (!op) {
+    op = builder.create<mlir::CallOp>(loc, tocall, args);
   }
-
-  auto op = builder.create<mlir::CallOp>(loc, tocall, args);
 
   if (isArrayReturn) {
     // TODO remedy return
@@ -1464,12 +1462,8 @@ ValueCategory MLIRScanner::VisitCallExpr(clang::CallExpr *expr) {
   /// If the callee is part of the SYCL namespace, we do not want the
   /// GetOrCreateMLIRFunction to add this FuncOp to the functionsToEmit dequeu,
   /// since we will create it's equivalent with SYCL operations.
-  auto ShouldEmit = true;
-  /// JLE_QUEL::FIXME
-  /// When starting to work on II-209 and II-210, remove ShouldEmit = true
-  /// and uncomment ShouldEmit = !mlirclang:: ...
-  // auto ShouldEmit =
-  // !mlirclang::isNamespaceSYCL(callee->getEnclosingNamespaceContext());
+  auto ShouldEmit =
+      !mlirclang::isNamespaceSYCL(callee->getEnclosingNamespaceContext());
   auto ToCall = Glob.GetOrCreateMLIRFunction(callee, ShouldEmit);
 
   SmallVector<std::pair<ValueCategory, clang::Expr *>> args;

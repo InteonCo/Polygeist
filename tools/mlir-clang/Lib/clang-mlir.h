@@ -286,9 +286,8 @@ public:
 
   std::pair<ValueCategory, bool> EmitBuiltinOps(clang::CallExpr *expr);
 
-  std::pair<ValueCategory, bool>
-  EmitSYCLOps(const clang::Expr *Expr,
-              const llvm::SmallVectorImpl<mlir::Value> &Args);
+  mlir::Operation *EmitSYCLOps(const clang::Expr *Expr,
+                               const llvm::SmallVectorImpl<mlir::Value> &Args);
 
   ValueCategory
   VisitCXXScalarValueInitExpr(clang::CXXScalarValueInitExpr *expr);
