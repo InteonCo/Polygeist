@@ -185,23 +185,33 @@ void MLIRScanner::init(mlir::FuncOp function, const FunctionDecl *fd) {
             V = builder.create<LLVM::GEPOp>(loc, V.getType(), V, idxs);
           }
 
-          if (V.getType().isa<mlir::LLVM::LLVMPointerType>()) {
-            bool isArray = false;
+          bool IsArray = false;
+          if (const auto PT =
+                  V.getType().dyn_cast<mlir::LLVM::LLVMPointerType>()) {
             auto subType = LLVM::LLVMPointerType::get(
-                Glob.getMLIRType(QualType(BaseType, 0), &isArray,
+                Glob.getMLIRType(QualType(BaseType, 0), &IsArray,
                                  /*allowMerge*/ false),
-                V.getType().cast<LLVM::LLVMPointerType>().getAddressSpace());
-            assert(!isArray && "implicit reference not handled");
+                PT.getAddressSpace());
+            assert(!IsArray && "implicit reference not handled");
 
             V = builder.create<LLVM::BitcastOp>(loc, subType, V);
 
-            isArray = false;
+            IsArray = false;
             auto subType2 =
                 Glob.getMLIRType(Glob.CGM.getContext().getLValueReferenceType(
                                      QualType(BaseType, 0)),
-                                 &isArray);
+                                 &IsArray);
             if (subType2.isa<MemRefType>())
               V = builder.create<polygeist::Pointer2MemrefOp>(loc, subType2, V);
+          } else if (const auto MT = V.getType().dyn_cast<mlir::MemRefType>()) {
+            const auto SubType = mlir::MemRefType::get(
+                MT.getShape(),
+                Glob.getMLIRType(QualType(BaseType, 0), &IsArray,
+                                 /*allowMerge*/ false),
+                MT.getLayout(), MT.getMemorySpace());
+            assert(!IsArray && "implicit reference not handled");
+
+            V = builder.create<mlir::memref::CastOp>(loc, V, SubType);
           }
 
           Expr *init = expr->getInit();
@@ -1332,7 +1342,13 @@ ValueCategory MLIRScanner::VisitConstructCommon(clang::CXXConstructExpr *cons,
     assert(obj.isReference);
   }
 
-  auto tocall = Glob.GetOrCreateMLIRFunction(cons->getConstructor());
+  /// If the constructor is part of the SYCL namespace, we do not want the
+  /// GetOrCreateMLIRFunction to add this FuncOp to the functionsToEmit dequeu,
+  /// since we will create it's equivalent with SYCL operations.
+  const auto ShouldEmit = !mlirclang::isNamespaceSYCL(
+      cons->getConstructor()->getEnclosingNamespaceContext());
+  auto tocall =
+      Glob.GetOrCreateMLIRFunction(cons->getConstructor(), ShouldEmit);
 
   SmallVector<std::pair<ValueCategory, clang::Expr *>> args;
   args.emplace_back(make_pair(obj, (clang::Expr *)nullptr));
@@ -1815,6 +1831,50 @@ MLIRScanner::EmitGPUCallExpr(clang::CallExpr *expr) {
     }
   }
   return make_pair(ValueCategory(), false);
+}
+
+mlir::Operation *
+MLIRScanner::EmitSYCLOps(const clang::Expr *Expr,
+                         const llvm::SmallVectorImpl<mlir::Value> &Args) {
+  mlir::Operation *Op = nullptr;
+
+  if (const auto *ConsExpr = dyn_cast<clang::CXXConstructExpr>(Expr)) {
+    const auto *Func = ConsExpr->getConstructor()->getAsFunction();
+
+    if (mlirclang::isNamespaceSYCL(Func->getEnclosingNamespaceContext())) {
+      if (const auto *RD = dyn_cast<clang::CXXRecordDecl>(Func->getParent())) {
+        Op = builder.create<mlir::sycl::SYCLConstructorOp>(loc, RD->getName(),
+                                                           Args);
+      }
+    }
+  } else if (const auto *CallExpr = dyn_cast<clang::CallExpr>(Expr)) {
+    const auto *Func = CallExpr->getCalleeDecl()->getAsFunction();
+
+    if (mlirclang::isNamespaceSYCL(Func->getEnclosingNamespaceContext())) {
+      auto OptFuncType = llvm::Optional<llvm::StringRef>{llvm::None};
+      if (const auto *RD = dyn_cast<clang::CXXRecordDecl>(Func->getParent())) {
+        OptFuncType = RD->getName();
+      } else {
+        /// JLE_QUEL::TODO
+        /// Handle case where we can't get the parent because the callee is not
+        /// a member function
+        llvm::errs()
+            << "Warning: generating sycl call op from unqualified function '"
+            << Func->getNameAsString() << "'\n";
+      }
+
+      auto OptRetType = llvm::Optional<mlir::Type>{llvm::None};
+      const auto RetType = getMLIRType(Func->getReturnType());
+      if (!RetType.isa<mlir::NoneType>()) {
+        OptRetType = RetType;
+      }
+
+      Op = builder.create<mlir::sycl::SYCLCallOp>(
+          loc, OptRetType, OptFuncType, Func->getNameAsString(), Args);
+    }
+  }
+
+  return Op;
 }
 
 mlir::Value MLIRScanner::getConstantIndex(int x) {
@@ -3216,6 +3276,21 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
       auto ty = mlir::MemRefType::get(mt.getShape(), mt.getElementType(),
                                       MemRefLayoutAttrInterface(),
                                       ut.getMemorySpace());
+      if (ty.getElementType().getDialect().getNamespace() ==
+              mlir::sycl::SYCLDialect::getDialectNamespace() &&
+          ut.getElementType().getDialect().getNamespace() ==
+              mlir::sycl::SYCLDialect::getDialectNamespace() &&
+          ty.getElementType() != ut.getElementType()) {
+        return ValueCategory(
+            builder.create<mlir::sycl::SYCLCastOp>(loc, ty, se.val),
+            /*isReference*/ se.isReference);
+      }
+
+      /// JLE_QUEL::THOUGHT
+      /// This logic should never be executed since the integration of the sycl
+      /// dialect is the only one to use memref on struct type.
+      /// Keep this unreachable until we have re-enabled testing.
+      llvm_unreachable("");
       return ValueCategory(
           builder.create<mlir::memref::CastOp>(loc, se.val, ty),
           /*isReference*/ se.isReference);
@@ -4083,7 +4158,8 @@ mlir::Value MLIRASTConsumer::GetOrCreateGlobalLLVMString(
   return globalPtr;
 }
 
-mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
+mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD,
+                                                      const bool ShouldEmit) {
   assert(FD->getTemplatedKind() !=
          FunctionDecl::TemplatedKind::TK_FunctionTemplate);
   assert(
@@ -4156,7 +4232,8 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
     if (Def->isThisDeclarationADefinition()) {
       if (LV == llvm::GlobalValue::InternalLinkage ||
           LV == llvm::GlobalValue::PrivateLinkage || !Def->isDefined() ||
-          Def->hasAttr<CUDAGlobalAttr>() || Def->hasAttr<CUDADeviceAttr>()) {
+          Def->hasAttr<CUDAGlobalAttr>() || Def->hasAttr<CUDADeviceAttr>() ||
+          !ShouldEmit) {
         SymbolTable::setSymbolVisibility(function,
                                          SymbolTable::Visibility::Private);
       } else {
@@ -4168,7 +4245,9 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
       attrs.set("llvm.linkage",
                 mlir::LLVM::LinkageAttr::get(builder.getContext(), lnk));
       function->setAttrs(attrs.getDictionary(builder.getContext()));
-      functionsToEmit.push_back(Def);
+      if (ShouldEmit) {
+        functionsToEmit.push_back(Def);
+      }
     }
     assert(function->getParentOp() == module.get());
     return function;
@@ -4259,7 +4338,8 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
 
   if (LV == llvm::GlobalValue::InternalLinkage ||
       LV == llvm::GlobalValue::PrivateLinkage || !FD->isDefined() ||
-      FD->hasAttr<CUDAGlobalAttr>() || FD->hasAttr<CUDADeviceAttr>()) {
+      FD->hasAttr<CUDAGlobalAttr>() || FD->hasAttr<CUDADeviceAttr>() ||
+      !ShouldEmit) {
     SymbolTable::setSymbolVisibility(function,
                                      SymbolTable::Visibility::Private);
   } else {
@@ -4279,8 +4359,10 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
     assert(Def->getTemplatedKind() !=
            FunctionDecl::TemplatedKind::
                TK_DependentFunctionTemplateSpecialization);
-    functionsToEmit.push_back(Def);
-  } else {
+    if (ShouldEmit) {
+      functionsToEmit.push_back(Def);
+    }
+  } else if (ShouldEmit) {
     emitIfFound.insert(name);
   }
   assert(function->getParentOp() == module.get());

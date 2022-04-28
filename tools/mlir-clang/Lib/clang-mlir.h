@@ -98,7 +98,8 @@ struct MLIRASTConsumer : public ASTConsumer {
 
   ~MLIRASTConsumer() {}
 
-  mlir::FuncOp GetOrCreateMLIRFunction(const FunctionDecl *FD);
+  mlir::FuncOp GetOrCreateMLIRFunction(const FunctionDecl *FD,
+                                       const bool ShouldEmit = true);
 
   mlir::LLVM::LLVMFuncOp GetOrCreateLLVMFunction(const FunctionDecl *FD);
   mlir::LLVM::LLVMFuncOp GetOrCreateMallocFunction();
@@ -284,6 +285,9 @@ public:
   std::pair<ValueCategory, bool> EmitGPUCallExpr(clang::CallExpr *expr);
 
   std::pair<ValueCategory, bool> EmitBuiltinOps(clang::CallExpr *expr);
+
+  mlir::Operation *EmitSYCLOps(const clang::Expr *Expr,
+                               const llvm::SmallVectorImpl<mlir::Value> &Args);
 
   ValueCategory
   VisitCXXScalarValueInitExpr(clang::CXXScalarValueInitExpr *expr);
