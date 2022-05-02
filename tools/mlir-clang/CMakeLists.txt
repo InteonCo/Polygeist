@@ -17,6 +17,11 @@ set( LLVM_LINK_COMPONENTS
   Vectorize
 )
 
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/sycl-clang.py.in
+  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/sycl-clang.py)
+
+
 add_clang_executable(mlir-clang
   mlir-clang.cc
   Lib/CGStmt.cc
