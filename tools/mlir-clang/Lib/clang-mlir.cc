@@ -4741,9 +4741,9 @@ mlir::Type MLIRASTConsumer::getMLIRType(clang::QualType qt, bool *implicitRef,
       }
     }
 
-    if (ST->getName().contains("class.cl::sycl") ||
-        ST->getName().contains("struct.cl::sycl")) {
-      const auto TypeName = RT->getAsRecordDecl()->getName();
+    const auto *RD = RT->getAsRecordDecl();
+    if (mlirclang::isNamespaceSYCL(RD->getEnclosingNamespaceContext())) {
+      const auto TypeName = RD->getName();
       if (TypeName == "range" || TypeName == "array" || TypeName == "id" ||
           TypeName == "accessor" || TypeName == "AccessorImplDevice" ||
           TypeName == "item" || TypeName == "ItemBase" ||
