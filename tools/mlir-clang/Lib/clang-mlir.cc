@@ -4348,6 +4348,9 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD,
   NamedAttrList attrs(function->getAttrDictionary());
   attrs.set("llvm.linkage",
             mlir::LLVM::LinkageAttr::get(builder.getContext(), lnk));
+  if (FD->hasAttr<SYCLHalideAttr>() && FD->hasAttr<SYCLKernelAttr>()) {
+    attrs.set("SYCLKernel", mlir::StringAttr::get(builder.getContext(), name));
+  }
   function->setAttrs(attrs.getDictionary(builder.getContext()));
 
   functions[name] = function;
