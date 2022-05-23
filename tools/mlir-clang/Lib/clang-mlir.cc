@@ -35,8 +35,9 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include <mlir/Dialect/SYCL/IR/SYCLOpsDialect.h>
-#include <mlir/Dialect/SYCL/IR/SYCLOpsTypes.h>
+
+#include <SYCL/SYCLOpsDialect.h>
+#include <SYCL/SYCLOpsTypes.h>
 
 static bool DEBUG_FUNCTION = false;
 static bool BREAKPOINT_FUNCTION = false;
