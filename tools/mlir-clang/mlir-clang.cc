@@ -32,8 +32,10 @@
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/Dialect/SCF/Passes.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/SYCL/IR/SYCLOpsDialect.h"
-#include "mlir/Dialect/SYCL/IR/SYCLOpsTypes.h"
+
+#include "SYCL/SYCLOpsDialect.h"
+#include "SYCL/SYCLOpsTypes.h"
+
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h"
