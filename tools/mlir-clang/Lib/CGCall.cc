@@ -1,3 +1,5 @@
+// Copyright (C) Codeplay Software Limited
+
 //===--- CGCall.cpp - Encapsulate calling convention details --------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
