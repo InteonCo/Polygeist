@@ -12,7 +12,13 @@
 
 #include <sycl/sycl.hpp>
 
-// CHECK: func @_ZTS8kernel_1(%arg0: memref<?xi32>, %arg1: !sycl.range<1>, %arg2: !sycl.range<1>, %arg3: !sycl.id<1>) attributes {SYCLKernel = "_ZTS8kernel_1", llvm.linkage = #llvm.linkage<weak_odr>}
+// CHECK: !sycl_accessor_1_i32_read_write_global_buffer = type !sycl.accessor<[1, i32, read_write, global_buffer], (!sycl.accessor_impl_device<[1], (!sycl.id<1>, !sycl.range<1>, !sycl.range<1>)>, !llvm.struct<(ptr<i32, 1>)>)>
+// CHECK: !sycl_id_1_ = type !sycl.id<1>
+// CHECK: !sycl_item_1_1_ = type !sycl.item<[1, true], (!sycl.item_base<[1, true], (!sycl.range<1>, !sycl.id<1>, !sycl.id<1>)>)>
+// CHECK: !sycl_item_2_1_ = type !sycl.item<[2, true], (!sycl.item_base<[2, true], (!sycl.range<2>, !sycl.id<2>, !sycl.id<2>)>)>
+// CHECK: !sycl_range_1_ = type !sycl.range<1>
+
+// CHECK: func @_ZTS8kernel_1(%arg0: memref<?xi32>, %arg1: !sycl_range_1_, %arg2: !sycl_range_1_, %arg3: !sycl_id_1_) attributes {SYCLKernel = "_ZTS8kernel_1", llvm.linkage = #llvm.linkage<weak_odr>}
 // CHECK-NOT: SYCLKernel =
 
 class kernel_1 {
@@ -40,7 +46,7 @@ void host_1() {
   }
 }
 
-// CHECK: func @_ZTSZZ6host_2vENKUlRN2cl4sycl7handlerEE_clES2_E8kernel_2(%arg0: memref<?xi32>, %arg1: !sycl.range<1>, %arg2: !sycl.range<1>, %arg3: !sycl.id<1>) attributes {SYCLKernel = "_ZTSZZ6host_2vENKUlRN2cl4sycl7handlerEE_clES2_E8kernel_2", llvm.linkage = #llvm.linkage<weak_odr>}
+// CHECK: func @_ZTSZZ6host_2vENKUlRN2cl4sycl7handlerEE_clES2_E8kernel_2(%arg0: memref<?xi32>, %arg1: !sycl_range_1_, %arg2: !sycl_range_1_, %arg3: !sycl_id_1_) attributes {SYCLKernel = "_ZTSZZ6host_2vENKUlRN2cl4sycl7handlerEE_clES2_E8kernel_2", llvm.linkage = #llvm.linkage<weak_odr>}
 // CHECK-NOT: SYCLKernel =
 
 void host_2() {
