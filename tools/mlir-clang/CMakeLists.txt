@@ -1,3 +1,5 @@
+# Copyright (C) Codeplay Software Limited
+
 set( LLVM_LINK_COMPONENTS
   ${LLVM_TARGETS_TO_BUILD}
   Analysis

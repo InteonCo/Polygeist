@@ -1,3 +1,5 @@
+// Copyright (C) Codeplay Software Limited
+
 //===- mlir-clang.cpp - mlir-clang Driver ---------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.

@@ -1,3 +1,5 @@
+// Copyright (C) Codeplay Software Limited
+
 //===- PolygeistOps.cpp - BFV dialect ops ---------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.

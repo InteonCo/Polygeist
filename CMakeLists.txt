@@ -1,3 +1,5 @@
+# Copyright (C) Codeplay Software Limited
+
 cmake_minimum_required(VERSION 3.10)
 
 if(POLICY CMP0068)

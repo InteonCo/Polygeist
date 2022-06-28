@@ -1,3 +1,5 @@
+// Copyright (C) Codeplay Software Limited
+
 //===- ParallelLower.cpp - Lower gpu code to triple nested loops ------ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
