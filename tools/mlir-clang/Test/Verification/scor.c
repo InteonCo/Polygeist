@@ -1,5 +1,9 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s --function=kernel_correlation -S | FileCheck %s
 // RUN: mlir-clang %s --function=kernel_correlation -S --memref-fullrank | FileCheck %s --check-prefix=FULLRANK
+
+// XFAIL: *
 
 #define DATA_TYPE double
 

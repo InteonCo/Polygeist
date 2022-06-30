@@ -1,4 +1,8 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s -S -memref-fullrank -O0 | FileCheck %s
+
+// XFAIL: *
 
 #include <stdio.h>
 

@@ -1,4 +1,8 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s --function=* -S | FileCheck %s
+
+// XFAIL: *
 
 int compute_tran_temp(int total_iterations, int num_iterations)
 {

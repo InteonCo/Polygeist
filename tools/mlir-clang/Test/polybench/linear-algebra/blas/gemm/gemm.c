@@ -1,3 +1,5 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s %stdinclude -S | FileCheck %s
 // RUN: mlir-clang %s %stdinclude -S --memref-fullrank | FileCheck %s --check-prefix=FULLRANK
 // RUN: clang %s -O3 %stdinclude %polyverify -o %s.exec1 && %s.exec1 &> %s.out1
@@ -14,6 +16,8 @@
 // RUN: rm -f %s.exec1 %s.execm
 // RUN: diff %s.out1 %s.out2
 // RUN: rm -f %s.out1 %s.out2
+
+// XFAIL: *
 
 /**
  * This version is stamped on May 10, 2016
