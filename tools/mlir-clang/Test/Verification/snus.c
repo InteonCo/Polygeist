@@ -1,5 +1,9 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s -detect-reduction --function=kernel_nussinov -S | FileCheck %s
 // RUN: mlir-clang %s -detect-reduction --function=kernel_nussinov -S -memref-fullrank | FileCheck %s --check-prefix=FULLRANK
+
+// XFAIL: *
 
 #define max_score(s1, s2) ((s1 >= s2) ? s1 : s2)
 

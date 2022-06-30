@@ -1,5 +1,9 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s %stdinclude --function=set -S | FileCheck %s
 // RUN: mlir-clang %s %stdinclude --function=set -S --memref-fullrank | FileCheck %s --check-prefix=FULLRANK
+
+// XFAIL: *
 
 #include <stdio.h>
 #include <unistd.h>

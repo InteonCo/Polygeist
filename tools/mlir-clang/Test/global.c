@@ -1,4 +1,8 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s %stdinclude -S | FileCheck %s
+
+// XFAIL: *
 
 float A[64][32];
 

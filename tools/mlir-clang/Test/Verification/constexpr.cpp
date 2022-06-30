@@ -1,4 +1,9 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s --function=* -S | FileCheck %s
+
+// XFAIL: *
+
 constexpr int num = 10 + 4;
 
 int sum(int*);

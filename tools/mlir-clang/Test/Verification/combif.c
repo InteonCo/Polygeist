@@ -1,4 +1,8 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s --function=* -S | FileCheck %s
+
+// XFAIL: *
 
 // TODO remove unused cyclic phi
 

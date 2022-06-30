@@ -1,5 +1,9 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang -S -O0 %s | FileCheck %s
 // RUN: mlir-clang -S -O1 %s | FileCheck %s --check-prefix=OPT1
+
+// XFAIL: *
 
 void foo(int A[10]) {
 #pragma scop

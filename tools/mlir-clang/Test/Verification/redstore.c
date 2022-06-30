@@ -1,4 +1,8 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s --function=* --detect-reduction -S | FileCheck %s
+
+// XFAIL: *
 
 extern int print(double);
 

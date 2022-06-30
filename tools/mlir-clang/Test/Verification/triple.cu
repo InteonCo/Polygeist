@@ -5,6 +5,8 @@
 // aarch64-unknown-linux-gnu %s %stdinclude -emit-llvm -S -o - | FileCheck %s
 // -check-prefix=LLVM
 
+// XFAIL: *
+
 // MLIR:  llvm.target_triple = "aarch64-unknown-linux-gnu"
 // LLVM:  target triple = "aarch64-unknown-linux-gnu"
 

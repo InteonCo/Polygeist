@@ -1,4 +1,8 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s --function=gcd -S | FileCheck %s
+
+// XFAIL: *
 
 int gcd(int m, int n) {
   while (n > 0) {

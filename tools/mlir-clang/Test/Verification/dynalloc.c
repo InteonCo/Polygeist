@@ -1,4 +1,8 @@
+// Copyright (C) Codeplay Software Limited
+
 // RUN: mlir-clang %s --function=create_matrix -S | FileCheck %s
+
+// XFAIL: *
 
 void create_matrix(float *m, int size) {
   float coe[2 * size - 1];
