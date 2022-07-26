@@ -1,6 +1,6 @@
 // Copyright (C) Codeplay Software Limited
 
-// RUN: mlir-clang %s --function=create_matrix -S | FileCheck %s
+// RUN: cgeist %s --function=create_matrix -S | FileCheck %s
 
 // XFAIL: *
 

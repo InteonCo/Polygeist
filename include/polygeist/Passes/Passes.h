@@ -5,16 +5,21 @@
 #include "mlir/Pass/Pass.h"
 #include <memory>
 namespace mlir {
+class PatternRewriter;
+class DominanceInfo;
 namespace polygeist {
-std::unique_ptr<OperationPass<FuncOp>> createMem2RegPass();
-std::unique_ptr<OperationPass<FuncOp>> createLoopRestructurePass();
-std::unique_ptr<OperationPass<FuncOp>> replaceAffineCFGPass();
+std::unique_ptr<Pass> createParallelLICMPass();
+std::unique_ptr<Pass> createMem2RegPass();
+std::unique_ptr<Pass> createLoopRestructurePass();
+std::unique_ptr<Pass> createInnerSerializationPass();
+std::unique_ptr<Pass> replaceAffineCFGPass();
+std::unique_ptr<Pass> createOpenMPOptPass();
 std::unique_ptr<Pass> createCanonicalizeForPass();
 std::unique_ptr<Pass> createRaiseSCFToAffinePass();
 std::unique_ptr<Pass> createCPUifyPass(StringRef method = "");
 std::unique_ptr<Pass> createBarrierRemovalContinuation();
-std::unique_ptr<OperationPass<FuncOp>> detectReductionPass();
-std::unique_ptr<OperationPass<FuncOp>> createRemoveTrivialUsePass();
+std::unique_ptr<Pass> detectReductionPass();
+std::unique_ptr<Pass> createRemoveTrivialUsePass();
 std::unique_ptr<Pass> createParallelLowerPass();
 std::unique_ptr<Pass>
 createConvertPolygeistToLLVMPass(const LowerToLLVMOptions &options);
@@ -24,7 +29,8 @@ std::unique_ptr<Pass> createConvertPolygeistToLLVMPass();
 } // namespace mlir
 
 void fully2ComposeAffineMapAndOperands(
-    mlir::AffineMap *map, llvm::SmallVectorImpl<mlir::Value> *operands);
+    mlir::PatternRewriter &rewriter, mlir::AffineMap *map,
+    llvm::SmallVectorImpl<mlir::Value> *operands, mlir::DominanceInfo &DI);
 bool isValidIndex(mlir::Value val);
 
 namespace mlir {
@@ -40,8 +46,11 @@ namespace memref {
 class MemRefDialect;
 } // end namespace memref
 
+namespace func {
+class FuncDialect;
+}
+
 class AffineDialect;
-class StandardOpsDialect;
 namespace LLVM {
 class LLVMDialect;
 }

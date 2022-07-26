@@ -21,19 +21,19 @@ using namespace polygeist;
 
 namespace {
 struct RemoveTrivialUse : public RemoveTrivialUseBase<RemoveTrivialUse> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 } // end anonymous namespace
 
 namespace mlir {
 namespace polygeist {
-std::unique_ptr<OperationPass<FuncOp>> createRemoveTrivialUsePass() {
+std::unique_ptr<Pass> createRemoveTrivialUsePass() {
   return std::make_unique<RemoveTrivialUse>();
 }
 } // namespace polygeist
 } // namespace mlir
 
-void RemoveTrivialUse::runOnFunction() {
+void RemoveTrivialUse::runOnOperation() {
   getOperation()->walk([&](polygeist::TrivialUseOp bidx) { bidx.erase(); });
 }

@@ -10,10 +10,10 @@
 #define MLIR_LIB_DIALECT_SCF_TRANSFORMS_BARRIERUTILS_H_
 
 #include "mlir/Analysis/DataLayoutAnalysis.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Block.h"
 #include "polygeist/Ops.h"
 #include "llvm/ADT/SetVector.h"
@@ -72,6 +72,23 @@ static T allocateTemporaryBuffer(mlir::OpBuilder &rewriter, mlir::Value value,
     }
   auto type = MemRefType::get(bufferSize, ty);
   return rewriter.create<T>(value.getLoc(), type, iterationCounts);
+}
+
+template <>
+mlir::LLVM::AllocaOp allocateTemporaryBuffer<mlir::LLVM::AllocaOp>(
+    mlir::OpBuilder &rewriter, mlir::Value value,
+    mlir::ValueRange iterationCounts, bool alloca, mlir::DataLayout *DLI) {
+  using namespace mlir;
+  auto val = value.getDefiningOp<LLVM::AllocaOp>();
+  auto sz = val.getArraySize();
+  assert(DLI);
+  for (auto iter : iterationCounts) {
+    sz =
+        rewriter.create<arith::MulIOp>(value.getLoc(), sz,
+                                       rewriter.create<arith::IndexCastOp>(
+                                           value.getLoc(), sz.getType(), iter));
+  }
+  return rewriter.create<LLVM::AllocaOp>(value.getLoc(), val.getType(), sz);
 }
 
 template <>

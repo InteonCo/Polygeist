@@ -1,4 +1,4 @@
-//===- BFVOps.td - BFV dialect ops -----------*- tablegen -*-===//
+//===- Polygeist.td - Polygeist dialect ops ----------------*- tablegen -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -16,6 +16,24 @@ include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Dialect/LLVMIR/LLVMOpsInterfaces.td"
 
+def CacheLoad
+    : Polygeist_Op<"cacheload"> {
+
+  let arguments = (ins Arg<AnyMemRef, "the reference to load from",
+                           [MemRead]>:$memref,
+                       Variadic<Index>:$indices);
+  let results = (outs AnyType:$result);
+  let builders = [
+    OpBuilder<(ins "Value":$memref, CArg<"ValueRange", "{}">:$indices), [{
+      auto memrefType = memref.getType().cast<MemRefType>();
+      $_state.addOperands(memref);
+      $_state.addOperands(indices);
+      $_state.types.push_back(memrefType.getElementType());
+    }]>];
+  let summary = "load from cross barier cache";
+  let description = [{}];
+}
+
 // HasParent<"ParallelOp">,
 def BarrierOp
     : Polygeist_Op<"barrier",
@@ -24,6 +42,7 @@ def BarrierOp
   let arguments = (ins Variadic<Index>:$indices);
   let summary = "barrier for parallel loops";
   let description = [{}];
+  let hasCanonicalizer = true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -44,6 +63,16 @@ def SubIndexOp : Polygeist_Op<"subindex", [
   let extraClassDeclaration = [{
     ::mlir::Value getViewSource() { return source(); }
   }];
+}
+
+
+def StreamToTokenOp : Polygeist_Op<"stream2token", [
+  NoSideEffect
+]> {
+  let summary = "Extract an async stream from a cuda stream";
+
+  let arguments = (ins AnyType : $source);
+  let results = (outs AnyType : $result);
 }
 
 //===----------------------------------------------------------------------===//
@@ -91,6 +120,14 @@ def TrivialUseOp : Polygeist_Op<"trivialuse"> {
 
 def TypeSizeOp : Polygeist_Op<"typeSize", [NoSideEffect]> {
   let summary = "Get size of type";
+  let arguments = (ins TypeAttr : $source);
+  let results = (outs AnyType : $result);
+  let hasFolder = 1;
+  let hasCanonicalizer = 1;
+}
+
+def TypeAlignOp : Polygeist_Op<"typeAlign", [NoSideEffect]> {
+  let summary = "Get alignment of type";
   let arguments = (ins TypeAttr : $source);
   let results = (outs AnyType : $result);
   let hasFolder = 1;
