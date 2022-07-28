@@ -12,10 +12,10 @@
 
 #include <sycl/sycl.hpp>
 
-// CHECK: !sycl_id_2_ = type !sycl.id<2>
-// CHECK: !sycl_item_2_1_ = type !sycl.item<[2, true], (!sycl.item_base<[2, true], (!sycl.range<2>, !sycl.id<2>, !sycl.id<2>)>)>
+// CHECK: !sycl_id_2_ = !sycl.id<2>
+// CHECK: !sycl_item_2_1_ = !sycl.item<[2, true], (!sycl.item_base<[2, true], (!sycl.range<2>, !sycl.id<2>, !sycl.id<2>)>)>
 
-// CHECK: func @_Z6cons_1v() attributes {llvm.linkage = #llvm.linkage<external>} {
+// CHECK: func.func @_Z6cons_1v() attributes {llvm.linkage = #llvm.linkage<external>} {
 // CHECK-NEXT: %false = arith.constant false
 // CHECK-NEXT: %c0_i8 = arith.constant 0 : i8
 // CHECK-NEXT: %0 = memref.alloca() : memref<1x!sycl_id_2_>
@@ -32,7 +32,7 @@
   auto id = sycl::id<2>{};
 }
 
-// CHECK: func @_Z6cons_2mm(%arg0: i64, %arg1: i64) attributes {llvm.linkage = #llvm.linkage<external>} {
+// CHECK: func.func @_Z6cons_2mm(%arg0: i64, %arg1: i64) attributes {llvm.linkage = #llvm.linkage<external>} {
 // CHECK-NEXT: %0 = memref.alloca() : memref<1x!sycl_id_2_>
 // CHECK-NEXT: %1 = memref.cast %0 : memref<1x!sycl_id_2_> to memref<?x!sycl_id_2_>
 // CHECK-NEXT: sycl.constructor(%1, %arg0, %arg1) {Type = @id} : (memref<?x!sycl_id_2_>, i64, i64) -> ()
@@ -43,7 +43,7 @@
   auto id = sycl::id<2>{a, b};
 }
 
-// CHECK: func @_Z6cons_3N2cl4sycl4itemILi2ELb1EEE(%arg0: !sycl_item_2_1_) attributes {llvm.linkage = #llvm.linkage<external>} {
+// CHECK: func.func @_Z6cons_3N2cl4sycl4itemILi2ELb1EEE(%arg0: !sycl_item_2_1_) attributes {llvm.linkage = #llvm.linkage<external>} {
 // CHECK-NEXT: %0 = memref.alloca() : memref<1x!sycl_id_2_>
 // CHECK-NEXT: %1 = memref.cast %0 : memref<1x!sycl_id_2_> to memref<?x!sycl_id_2_>
 // CHECK-NEXT: %2 = memref.alloca() : memref<1x!sycl_item_2_1_>
@@ -57,7 +57,7 @@
   auto id = sycl::id<2>{val};
 }
 
-// CHECK: func @_Z6cons_4N2cl4sycl2idILi2EEE(%arg0: !sycl_id_2_) attributes {llvm.linkage = #llvm.linkage<external>} {
+// CHECK: func.func @_Z6cons_4N2cl4sycl2idILi2EEE(%arg0: !sycl_id_2_) attributes {llvm.linkage = #llvm.linkage<external>} {
 // CHECK-NEXT: %0 = memref.alloca() : memref<1x!sycl_id_2_>
 // CHECK-NEXT: %1 = memref.cast %0 : memref<1x!sycl_id_2_> to memref<?x!sycl_id_2_>
 // CHECK-NEXT: %2 = memref.alloca() : memref<1x!sycl_id_2_>
