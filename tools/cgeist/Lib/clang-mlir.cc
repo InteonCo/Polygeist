@@ -40,8 +40,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <SYCL/SYCLOpsDialect.h>
-#include <SYCL/SYCLOpsTypes.h>
+#include <SYCL/SYCLOps.h>
+#include <SYCL/SYCLTypes.h>
 
 static bool DEBUG_FUNCTION = false;
 static bool BREAKPOINT_FUNCTION = false;
@@ -3625,7 +3625,7 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
     }
     assert(se.val);
     auto Derived =
-        (E->isLValue() || E->isXValue())
+         (E->isLValue() || E->isXValue())
             ? cast<CXXRecordDecl>(
                   E->getSubExpr()->getType()->castAs<RecordType>()->getDecl())
             : E->getSubExpr()->getType()->getPointeeCXXRecordDecl();
@@ -3636,23 +3636,6 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
       BaseVirtual.push_back(B->isVirtual());
     }
 
-    mlir::Value val =
-        GetAddressOfBaseClass(se.val, Derived, BaseTypes, BaseVirtual);
-    if (E->getCastKind() != clang::CastKind::CK_UncheckedDerivedToBase &&
-        !isa<CXXThisExpr>(E->IgnoreParens())) {
-      mlir::Value ptr = val;
-      if (auto MT = ptr.getType().dyn_cast<MemRefType>())
-        ptr = builder.create<polygeist::Memref2PointerOp>(
-            loc, LLVM::LLVMPointerType::get(MT.getElementType()), ptr);
-      mlir::Value nullptr_llvm =
-          builder.create<mlir::LLVM::NullOp>(loc, ptr.getType());
-      auto ne = builder.create<mlir::LLVM::ICmpOp>(
-          loc, mlir::LLVM::ICmpPredicate::ne, ptr, nullptr_llvm);
-      if (auto MT = ptr.getType().dyn_cast<MemRefType>())
-        nullptr_llvm =
-            builder.create<polygeist::Pointer2MemrefOp>(loc, MT, nullptr_llvm);
-      val = builder.create<arith::SelectOp>(loc, ne, val, nullptr_llvm);
-    }
     if (auto ut = se.val.getType().dyn_cast<mlir::MemRefType>()) {
       auto mt = getMLIRType((E->isLValue() || E->isXValue())
                                 ? Glob.CGM.getContext().getLValueReferenceType(
@@ -3678,17 +3661,26 @@ ValueCategory MLIRScanner::VisitCastExpr(CastExpr *E) {
             builder.create<mlir::sycl::SYCLCastOp>(loc, ty, se.val),
             /*isReference*/ se.isReference);
       }
-
-      /// JLE_QUEL::THOUGHT
-      /// This logic should never be executed since the integration of the sycl
-      /// dialect is the only one to use memref on struct type.
-      /// Keep this unreachable until we have re-enabled testing.
-      llvm_unreachable("");
-      return ValueCategory(
-          builder.create<mlir::memref::CastOp>(loc, ty, se.val),   //mmoadeli this to be checked for correctness
-         /*isReference*/ se.isReference);
     }
-    llvm_unreachable("type must be LLVMPointer or MemRef");
+
+    mlir::Value val =
+        GetAddressOfBaseClass(se.val, Derived, BaseTypes, BaseVirtual);
+    if (E->getCastKind() != clang::CastKind::CK_UncheckedDerivedToBase &&
+        !isa<CXXThisExpr>(E->IgnoreParens())) {
+      mlir::Value ptr = val;
+      if (auto MT = ptr.getType().dyn_cast<MemRefType>())
+        ptr = builder.create<polygeist::Memref2PointerOp>(
+            loc, LLVM::LLVMPointerType::get(MT.getElementType()), ptr);
+      mlir::Value nullptr_llvm =
+          builder.create<mlir::LLVM::NullOp>(loc, ptr.getType());
+      auto ne = builder.create<mlir::LLVM::ICmpOp>(
+          loc, mlir::LLVM::ICmpPredicate::ne, ptr, nullptr_llvm);
+      if (auto MT = ptr.getType().dyn_cast<MemRefType>())
+        nullptr_llvm =
+            builder.create<polygeist::Pointer2MemrefOp>(loc, MT, nullptr_llvm);
+      val = builder.create<arith::SelectOp>(loc, ne, val, nullptr_llvm);
+    }
+
     return ValueCategory(val, se.isReference);
   }
   case clang::CastKind::CK_BaseToDerived: {
