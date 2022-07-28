@@ -56,7 +56,7 @@ target_link_libraries(cgeist PRIVATE
   MLIRSupport
   MLIRIR
   MLIRAnalysis
-  MLIRSYCL
+  MLIRSYCLDialect
   MLIROpenMPDialect
   MLIRGPUOps
   MLIRTransforms
