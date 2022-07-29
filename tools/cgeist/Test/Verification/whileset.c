@@ -1,8 +1,6 @@
 // RUN: cgeist %s %stdinclude --function=set -S | FileCheck %s
 // RUN: cgeist %s %stdinclude --function=set -S --memref-fullrank | FileCheck %s --check-prefix=FULLRANK
 
-// XFAIL: *
-
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>

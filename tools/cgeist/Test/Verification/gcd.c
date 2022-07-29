@@ -1,7 +1,5 @@
 // RUN: cgeist %s --function=gcd -S | FileCheck %s
 
-// XFAIL: *
-
 int gcd(int m, int n) {
   while (n > 0) {
     int r = m % n;

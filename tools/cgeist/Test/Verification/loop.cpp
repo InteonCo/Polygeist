@@ -1,7 +1,5 @@
 // RUN: cgeist %s --function=* -S | FileCheck %s
 
-// XFAIL: *
-
 int MAX_DIMS;
 
 struct A {
