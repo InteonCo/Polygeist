@@ -1,8 +1,6 @@
 // RUN: cgeist %s --function=kernel_correlation -S | FileCheck %s
 // RUN: cgeist %s --function=kernel_correlation -S --memref-fullrank | FileCheck %s --check-prefix=FULLRANK
 
-// XFAIL: *
-
 #define DATA_TYPE double
 
 #define SCALAR_VAL(x) ((double)x)

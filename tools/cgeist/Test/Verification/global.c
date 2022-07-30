@@ -1,7 +1,5 @@
 // RUN: cgeist %s %stdinclude -S | FileCheck %s
 
-// XFAIL: *
-
 float A[64][32];
 
 int main() {

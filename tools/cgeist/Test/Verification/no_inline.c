@@ -1,8 +1,6 @@
 // RUN: cgeist -S -O0 %s | FileCheck %s
 // RUN: cgeist -S -O1 %s | FileCheck %s --check-prefix=OPT1
 
-// XFAIL: *
-
 void foo(int A[10]) {
 #pragma scop
   for (int i = 0; i < 10; ++i)

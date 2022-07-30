@@ -1,7 +1,5 @@
 // RUN: cgeist %s --function=* --detect-reduction -S | FileCheck %s
 
-// XFAIL: *
-
 void sum(double *result, double* array) {
     result[0] = 0;
     #pragma scop

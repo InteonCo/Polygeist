@@ -1,7 +1,5 @@
 // RUN: cgeist %s --function=okernel_2mm -S | FileCheck %s
 
-// XFAIL: *
-
 void okernel_2mm(unsigned int ni,
                  double *tmp) {
   int i, j, k;

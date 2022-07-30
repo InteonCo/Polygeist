@@ -1,7 +1,5 @@
 // RUN: cgeist %s -S -memref-fullrank -O0 | FileCheck %s
 
-// XFAIL: *
-
 #include <stdio.h>
 
 int f(int A[10][20]) {

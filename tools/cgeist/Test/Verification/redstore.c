@@ -1,7 +1,5 @@
 // RUN: cgeist %s --function=* --detect-reduction -S | FileCheck %s
 
-// XFAIL: *
-
 extern int print(double);
 
 void sum(double *result, double* array, int N) {

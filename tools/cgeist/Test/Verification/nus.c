@@ -1,8 +1,6 @@
 // RUN: cgeist %s --function=kernel_nussinov -S | FileCheck %s
 // RUN: cgeist %s --function=kernel_nussinov -S --memref-fullrank | FileCheck %s --check-prefix=FULLRANK
 
-// XFAIL: *
-
 #define N 5500
 #define max_score(s1, s2) ((s1 >= s2) ? s1 : s2)
 

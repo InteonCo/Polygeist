@@ -481,12 +481,6 @@ int main(int argc, char **argv) {
     llvm::errs() << "</immediate: mlir>\n";
   }
 
-  if (mlir::failed(mlir::verify(module.get()))) {
-    module->emitError("Verifier failed");
-    module->dump();
-    return 5;
-  }
-
   int unrollSize = 32;
   bool LinkOMP = FOpenMP;
   pm.enableVerifier(EarlyVerifier);
