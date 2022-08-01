@@ -157,15 +157,6 @@ static cl::list<std::string> defines("D", cl::desc("defines"),
 static cl::list<std::string> Includes("include", cl::desc("includes"),
                                       cl::cat(toolOptions));
 
-static cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
-                                           cl::desc("<Specify input file>"),
-                                           cl::cat(toolOptions));
-
-static cl::list<std::string> inputCommandArgs("args", cl::Positional,
-                                              cl::desc("<command arguments>"),
-                                              cl::ZeroOrMore,
-                                              cl::PositionalEatsArgs);
-
 static cl::opt<std::string> TargetTripleOpt("target", cl::init(""),
                                             cl::desc("Target triple"),
                                             cl::cat(toolOptions));
@@ -405,10 +396,16 @@ int main(int argc, char **argv) {
   using namespace mlir;
 
   std::vector<std::string> files;
+  std::vector<std::string> commands;
   {
-    // cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
-    //                                     cl::desc("<Specify input file>"),
-    //                                     cl::cat(toolOptions));
+    cl::list<std::string> inputFileName(cl::Positional, cl::OneOrMore,
+                                        cl::desc("<Specify input file>"),
+                                        cl::cat(toolOptions));
+
+    cl::list<std::string> inputCommandArgs("args", cl::Positional,
+                                              cl::desc("<command arguments>"),
+                                              cl::ZeroOrMore,
+                                              cl::PositionalEatsArgs);
 
     int size = MLIRArgs.size();
     const char **data = MLIRArgs.data();
@@ -422,6 +419,9 @@ int main(int argc, char **argv) {
         return -1;
       }
       files.push_back(inp);
+    }
+    for (auto &cmd : inputCommandArgs) {
+      commands.push_back(cmd);
     }
   }
 
@@ -448,7 +448,6 @@ int main(int argc, char **argv) {
   if (syclKernelsOnly) {
     context.getOrLoadDialect<mlir::sycl::SYCLDialect>();
   }
-  // MLIRContext context;
 
   LLVM::LLVMPointerType::attachInterface<MemRefInsider>(context);
   LLVM::LLVMStructType::attachInterface<MemRefInsider>(context);
@@ -471,8 +470,8 @@ int main(int argc, char **argv) {
   if (!syclKernelsOnly) {
     fn = cfunction.getValue();
   }
-  parseMLIR(argv[0], inputFileName, fn, includeDirs, defines, module,
-            triple, DL, inputCommandArgs);
+  parseMLIR(argv[0], files, fn, includeDirs, defines, module,
+            triple, DL, commands);
   mlir::PassManager pm(&context);
 
   if (ImmediateMLIR) {
