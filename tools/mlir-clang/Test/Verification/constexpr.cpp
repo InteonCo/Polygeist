@@ -1,6 +1,6 @@
 // Copyright (C) Codeplay Software Limited
 
-// RUN: mlir-clang %s --function=* -S | FileCheck %s
+// RUN: cgeist %s --function=* -S | FileCheck %s
 
 // XFAIL: *
 

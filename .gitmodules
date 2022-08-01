@@ -1,4 +1,0 @@
-[submodule "llvm-project"]
-	path = llvm-project
-	url = git@github.com:InteonCo/sycl_integration.git
-	branch = main

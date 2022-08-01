@@ -13,11 +13,13 @@
 
 #include "PassDetails.h"
 
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/Passes.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dominance.h"
@@ -27,7 +29,6 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "polygeist/BarrierUtils.h"
 #include "polygeist/Passes/Passes.h"
-#include <mlir/Dialect/Arithmetic/IR/Arithmetic.h>
 
 using namespace mlir;
 using namespace mlir::arith;
@@ -47,7 +48,7 @@ static bool hasImmediateBarriers(scf::ParallelOp op) {
 /// Wrap the bodies of all parallel ops with immediate barriers, i.e. the
 /// parallel ops that will persist after the partial loop-to-cfg conversion,
 /// into an execute region op.
-static void wrapPersistingLoopBodies(FuncOp function) {
+static void wrapPersistingLoopBodies(FunctionOpInterface function) {
   SmallVector<scf::ParallelOp> loops;
   function.walk([&](scf::ParallelOp op) {
     if (hasImmediateBarriers(op))
@@ -70,17 +71,17 @@ static void wrapPersistingLoopBodies(FuncOp function) {
 }
 
 /// Convert SCF constructs except parallel ops with immediate barriers to a CFG.
-static LogicalResult applyCFGConversion(FuncOp function) {
+static LogicalResult applyCFGConversion(FunctionOpInterface function) {
   RewritePatternSet patterns(function.getContext());
-  populateLoopToStdConversionPatterns(patterns);
+  populateSCFToControlFlowConversionPatterns(patterns);
 
   // Configure the target to preserve parallel ops with barriers, unless those
   // barriers are nested in deeper parallel ops.
   ConversionTarget target(*function.getContext());
-  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<memref::MemRefDialect>();
   target.addIllegalOp<scf::ForOp, scf::IfOp, scf::WhileOp>();
-  target.addLegalOp<scf::ExecuteRegionOp, FuncOp, ModuleOp>();
+  target.addLegalOp<scf::ExecuteRegionOp, func::FuncOp, ModuleOp>();
   target.addDynamicallyLegalOp<scf::ParallelOp>(
       [](scf::ParallelOp op) { return hasImmediateBarriers(op); });
 
@@ -90,7 +91,7 @@ static LogicalResult applyCFGConversion(FuncOp function) {
 /// Convert SCF constructs except parallel loops with immediate barriers to a
 /// CFG after wrapping the bodies of such loops in an execute_region op so as to
 /// comply with the single-block requirement of the body.
-static LogicalResult convertToCFG(FuncOp function) {
+static LogicalResult convertToCFG(FunctionOpInterface function) {
   wrapPersistingLoopBodies(function);
   return applyCFGConversion(function);
 }
@@ -104,13 +105,13 @@ static void splitBlocksWithBarrier(Region &region) {
     Block *original = op->getBlock();
     Block *block = original->splitBlock(op->getNextNode());
     auto builder = OpBuilder::atBlockEnd(original);
-    builder.create<BranchOp>(builder.getUnknownLoc(), block);
+    builder.create<cf::BranchOp>(builder.getUnknownLoc(), block);
   }
 }
 
 /// Split blocks with barriers into parts in the parallel ops of the given
 /// function.
-static LogicalResult splitBlocksWithBarrier(FuncOp function) {
+static LogicalResult splitBlocksWithBarrier(FunctionOpInterface function) {
   WalkResult result = function.walk([](scf::ParallelOp op) -> WalkResult {
     if (!hasImmediateBarriers(op))
       return success();
@@ -225,8 +226,8 @@ replicateIntoRegion(Region &region, Value storage, ValueRange ivs,
 
   // Branch from the entry block to the first cloned block.
   builder.setInsertionPointToEnd(entryBlock);
-  builder.create<BranchOp>(builder.getUnknownLoc(),
-                           mapping.lookup(blocks.front()));
+  builder.create<cf::BranchOp>(builder.getUnknownLoc(),
+                               mapping.lookup(blocks.front()));
 
   // Now that the block structure is created, clone the operations and introduce
   // the flow between continuations.
@@ -244,7 +245,7 @@ replicateIntoRegion(Region &region, Value storage, ValueRange ivs,
       // blocks are assumed to branch to the entry block of another subgraph.
       // They are replaced with storing the correspnding continuation ID and a
       // yield.
-      if (auto branch = dyn_cast<BranchOp>(&op)) {
+      if (auto branch = dyn_cast<cf::BranchOp>(&op)) {
         // if (!blocks.contains(branch.dest())) {
         if (isa_and_nonnull<polygeist::BarrierOp>(branch->getPrevNode())) {
           auto it = llvm::find(subgraphEntryPoints, branch.getDest());
@@ -361,7 +362,7 @@ findNesrestPostDominatingInsertionPoint(
 std::pair<Block *, Block::iterator>
 findInsertionPointAfterLoopOperands(scf::ParallelOp op) {
   // Find the earliest insertion point where loop bounds are fully defined.
-  PostDominanceInfo postDominanceInfo(op->getParentOfType<FuncOp>());
+  PostDominanceInfo postDominanceInfo(op->getParentOfType<func::FuncOp>());
   SmallVector<Value> operands;
   llvm::append_range(operands, op.getLowerBound());
   llvm::append_range(operands, op.getUpperBound());
@@ -585,11 +586,12 @@ static void createContinuations(scf::ParallelOp parallel, Value storage) {
   parallel.erase();
 }
 
-static void createContinuations(FuncOp func) {
-  if (func->getNumRegions() == 0 || func.body().empty())
+static void createContinuations(FunctionOpInterface func) {
+  if (func->getNumRegions() == 0 || func.getBody().empty())
     return;
 
-  OpBuilder allocaBuilder(&func.body().front(), func.body().front().begin());
+  OpBuilder allocaBuilder(&func.getBody().front(),
+                          func.getBody().front().begin());
   func.walk([&](scf::ParallelOp parallel) {
     // Ignore parallel ops with no barriers.
     if (!hasImmediateBarriers(parallel))
@@ -603,8 +605,8 @@ static void createContinuations(FuncOp func) {
 namespace {
 struct BarrierRemoval
     : public SCFBarrierRemovalContinuationBase<BarrierRemoval> {
-  void runOnFunction() override {
-    auto f = getFunction();
+  void runOnOperation() override {
+    auto f = getOperation();
     if (failed(convertToCFG(f)))
       return;
     if (failed(splitBlocksWithBarrier(f)))
