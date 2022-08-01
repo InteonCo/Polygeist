@@ -120,12 +120,6 @@ void MLIRScanner::init(mlir::func::FuncOp function, const FunctionDecl *fd) {
     llvm::errs() << *fd << "\n";
   }
 
-//  printf("\n");
-//  function.dump();
-//  printf("\n");
-//  fd->dump();
-//  printf("\n");
-
   setEntryAndAllocBlock(function.addEntryBlock());
 
   unsigned i = 0;
@@ -180,7 +174,6 @@ void MLIRScanner::init(mlir::func::FuncOp function, const FunctionDecl *fd) {
 
   if (fd->hasAttr<CUDAGlobalAttr>() && Glob.CGM.getLangOpts().CUDA &&
       !Glob.CGM.getLangOpts().CUDAIsDevice) {
-    // JLE_QUEL: FIX cudaglobalcodegen.cu
     auto deviceStub =
         Glob.GetOrCreateMLIRFunction(fd, true, /* getDeviceStub */ true);
     builder.create<func::CallOp>(loc, deviceStub, function.getArguments());
@@ -219,39 +212,6 @@ void MLIRScanner::init(mlir::func::FuncOp function, const FunctionDecl *fd) {
 
           const clang::Type *BaseTypes[] = {BaseType};
           bool BaseVirtual[] = {BaseIsVirtual};
-
-// JLE_QUEL: FIX FOR BASE_WITH_VIRT 1 && 2
-//          V = GetAddressOfBaseClass(V, /*derived*/ ClassDecl, BaseTypes,
-//                                    BaseVirtual);
-//
-//          bool IsArray = false;
-//          if (const auto PT =
-//                  V.getType().dyn_cast<mlir::LLVM::LLVMPointerType>()) {
-//            auto subType = LLVM::LLVMPointerType::get(
-//                Glob.getMLIRType(QualType(BaseType, 0), &IsArray,
-//                                 /*allowMerge*/ false),
-//                PT.getAddressSpace());
-//            assert(!IsArray && "implicit reference not handled");
-//
-//            V = builder.create<LLVM::BitcastOp>(loc, subType, V);
-//
-//            IsArray = false;
-//            auto subType2 =
-//                Glob.getMLIRType(Glob.CGM.getContext().getLValueReferenceType(
-//                                     QualType(BaseType, 0)),
-//                                 &IsArray);
-//            if (subType2.isa<MemRefType>())
-//              V = builder.create<polygeist::Pointer2MemrefOp>(loc, subType2, V);
-//          } else if (const auto MT = V.getType().dyn_cast<mlir::MemRefType>()) {
-//            const auto SubType = mlir::MemRefType::get(
-//                MT.getShape(),
-//                Glob.getMLIRType(QualType(BaseType, 0), &IsArray,
-//                                 /*allowMerge*/ false),
-//                MT.getLayout(), MT.getMemorySpace());
-//            assert(!IsArray && "implicit reference not handled");
-//
-//            V = builder.create<mlir::memref::CastOp>(loc, SubType, V); //mmoadeli
-//          }
 
           V = GetAddressOfBaseClass(V, /*derived*/ ClassDecl, BaseTypes,
                                     BaseVirtual);
@@ -4892,29 +4852,8 @@ MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD,
 }
 
 void MLIRASTConsumer::run() {
-//  if (DEBUG_FUNCTION) {
-//    if (functionsToEmit.size()) {
-//      printf("-- FUNCTION(S) TO BE EMITTED --\n");
-//
-//      for (const auto *FD : functionsToEmit) {
-//        printf("  [+] %s(", FD->getNameAsString().c_str());
-//        for (unsigned int index = 0; index < FD->getNumParams(); index += 1) {
-//          printf("%s",
-//                 FD->getParamDecl(index)->getType().getAsString().c_str());
-//          if (index + 1 != FD->getNumParams()) {
-//            printf(", ");
-//          }
-//        }
-//        printf(")\n");
-//      }
-//      printf("\n");
-//    }
-//  }
-
   while (functionsToEmit.size()) {
     const FunctionDecl *FD = functionsToEmit.front();
-
-    BREAKPOINT_FUNCTION = FD->getNameAsString() == "bar";
 
     if (BREAKPOINT_FUNCTION && DEBUG_FUNCTION) {
       printf("\n");
@@ -4968,10 +4907,6 @@ void MLIRASTConsumer::run() {
         }
         printf("\n");
       }
-    }
-
-    if (BREAKPOINT_FUNCTION && DEBUG_FUNCTION) {
-      exit(0);
     }
   }
 }
