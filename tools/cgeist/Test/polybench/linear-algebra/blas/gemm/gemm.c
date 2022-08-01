@@ -15,8 +15,6 @@
 // RUN: diff %s.out1 %s.out2
 // RUN: rm -f %s.out1 %s.out2
 
-// XFAIL: *
-
 /**
  * This version is stamped on May 10, 2016
  *
@@ -166,7 +164,7 @@ int main(int argc, char** argv)
 // FULLRANK: func @kernel_gemm(%{{.*}}: i32, %{{.*}}: i32, %{{.*}}: i32, %{{.*}}: f64, %{{.*}}: f64, %{{.*}}: memref<1000x1100xf64>, %{{.*}}: memref<1000x1200xf64>, %{{.*}}: memref<1200x1100xf64>)
 
 // CHECK:   func @kernel_gemm(%arg0: i32, %arg1: i32, %arg2: i32, %arg3: f64, %arg4: f64, %arg5: memref<?x1100xf64>, %arg6: memref<?x1200xf64>, %arg7: memref<?x1100xf64>)
-// CHECK-DAG:    %[[i0:.+]] = arith.index_cast %arg0 : i32 to index  
+// CHECK-DAG:    %[[i0:.+]] = arith.index_cast %arg0 : i32 to index
 // CHECK-DAG:    %[[i1:.+]] = arith.index_cast %arg1 : i32 to index
 // CHECK-DAG:    %[[i2:.+]] = arith.index_cast %arg2 : i32 to index
 // CHECK-DAG:    affine.for %arg8 = 0 to %[[i0]] {

@@ -13,8 +13,6 @@
 // RUN: diff %s.out1 %s.out2
 // RUN: rm -f %s.out1 %s.out2
 
-// XFAIL: *
-
 /**
  * This version is stamped on May 10, 2016
  *
@@ -188,6 +186,6 @@ int main(int argc, char** argv)
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
-// CHECK-NEXT: }  
+// CHECK-NEXT: }
 
-// EXEC: {{[0-9]\.[0-9]+}}  
+// EXEC: {{[0-9]\.[0-9]+}}

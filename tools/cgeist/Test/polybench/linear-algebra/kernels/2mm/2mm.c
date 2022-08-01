@@ -15,8 +15,6 @@
 // RUN: diff %s.out1 %s.out2
 // RUN: rm -f %s.out1 %s.out2
 
-// XFAIL: *
-
 /**
  * This version is stamped on May 10, 2016
  *
@@ -197,7 +195,7 @@ int main(int argc, char** argv)
 // CHECK:      %5 = arith.mulf %4, %arg5 : f64
 // CHECK:      affine.store %5, %arg10[%arg11, %arg12] : memref<?x1200xf64>
 // CHECK:      affine.for %arg13 = 0 to {{.*}} {
-// CHECK:      %6 = affine.load %arg6[%arg11, %arg13] : memref<?x900xf64> 
+// CHECK:      %6 = affine.load %arg6[%arg11, %arg13] : memref<?x900xf64>
 // CHECK:      %7 = affine.load %arg9[%arg13, %arg12] : memref<?x1200xf64>
 // CHECK:      %8 = arith.mulf %6, %7 : f64
 // CHECK:      %9 = affine.load %arg10[%arg11, %arg12] : memref<?x1200xf64>
